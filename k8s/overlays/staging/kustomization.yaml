@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: grafana-mcp
+
+resources:
+  - ../../base
+
+# Two replicas, write-enabled against the sandbox Grafana.
+replicas:
+  - name: grafana-mcp
+    count: 2
+
+patches:
+  - target:
+      kind: ConfigMap
+      name: grafana-mcp-config
+    patch: |-
+      - op: replace
+        path: /data/GRAFANA_URL
+        value: "https://grafana-staging.example.com"
+      - op: replace
+        path: /data/MCP_DISABLE_WRITE
+        value: "false"

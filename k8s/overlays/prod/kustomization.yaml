@@ -1,0 +1,64 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: grafana-mcp
+
+resources:
+  - ../../base
+  - ingress.yaml
+
+# Three replicas across zones; HPA can grow to 10 from base.
+replicas:
+  - name: grafana-mcp
+    count: 3
+
+# Pin the image by digest in prod. Replace `sha256:...` with the digest of
+# the build you actually rolled out (record it in CHANGELOG.md too).
+images:
+  - name: ghcr.io/gpadidala/grafana-mcp
+    newTag: "0.12.1"
+    # digest: sha256:REPLACE_ME
+
+patches:
+  # 1. Force write-disabled and prod URL.
+  - target:
+      kind: ConfigMap
+      name: grafana-mcp-config
+    patch: |-
+      - op: replace
+        path: /data/GRAFANA_URL
+        value: "https://grafana.prod.example.com"
+      - op: replace
+        path: /data/MCP_DISABLE_WRITE
+        value: "true"
+      - op: replace
+        path: /data/MCP_LOG_LEVEL
+        value: "info"
+
+  # 2. Workload Identity annotation on the SA.
+  - target:
+      kind: ServiceAccount
+      name: grafana-mcp
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          azure.workload.identity/client-id: "REPLACE_WITH_MANAGED_IDENTITY_CLIENT_ID"
+
+  # 3. Replace the plain Secret reference with a CSI volume.
+  #    Uncomment after the SecretProviderClass is provisioned (see
+  #    base/secret.example.yaml).
+  # - target:
+  #     kind: Deployment
+  #     name: grafana-mcp
+  #   path: replica-patch.yaml
+
+  # 4. Bump replicas via the json-patch path so we keep the strategic-merge
+  #    free for SecretProviderClass wiring.
+  - target:
+      kind: Deployment
+      name: grafana-mcp
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/labels/azure.workload.identity~1use
+        value: "true"

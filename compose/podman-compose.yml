@@ -1,0 +1,38 @@
+# Podman-rootless variant.
+#
+# `podman-compose` (the standalone Python tool) silently ignores `deploy:`,
+# `profiles:`, and a few other Compose v2 features. Everything below is
+# limited to the v1.x dialect so it runs unmodified.
+#
+# Tip: if you have Podman 4.4+, prefer `podman compose -f docker-compose.yml`
+# which targets the same file as Docker. Use this file only if you're stuck on
+# the older standalone `podman-compose`.
+
+version: "3.8"
+
+services:
+  grafana-mcp:
+    image: grafana-mcp:dev
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        MCP_GRAFANA_VERSION: "0.12.1"
+    container_name: grafana-mcp
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      GRAFANA_URL: ${GRAFANA_URL:-http://host.containers.internal:3000}
+      MCP_TRANSPORT: streamable-http
+      MCP_ADDRESS: 0.0.0.0:8000
+      MCP_METRICS: "true"
+    ports:
+      - "8000:8000"
+    # podman-compose: deploy.resources is ignored; use legacy fields.
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3

@@ -1,0 +1,29 @@
+# Strategic-merge patch that swaps the env-from-Secret for a CSI-mounted
+# token. Enable it from kustomization.yaml once the SecretProviderClass
+# from base/secret.example.yaml is applied.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-mcp
+spec:
+  template:
+    spec:
+      containers:
+        - name: mcp
+          envFrom:
+            - configMapRef:
+                name: grafana-mcp-config
+            # The CSI driver syncs into a Secret with the same name.
+            - secretRef:
+                name: grafana-mcp
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets
+              readOnly: true
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: grafana-mcp

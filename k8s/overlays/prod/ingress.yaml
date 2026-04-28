@@ -1,0 +1,59 @@
+# Two ingress patterns. Keep ONE uncommented and delete the other.
+# Both assume cert-manager for TLS issuance.
+
+# ─── Variant A: NGINX ingress ─────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-mcp
+  namespace: grafana-mcp
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # WAF-friendly: cap body size, idle timeouts.
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [mcp.grafana.prod.example.com]
+      secretName: grafana-mcp-tls
+  rules:
+    - host: mcp.grafana.prod.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana-mcp
+                port:
+                  number: 8000
+
+# ─── Variant B: Application Gateway Ingress (AGIC) ────────────────────────
+# Replace the above with this when running on AKS+AGIC.
+#
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: grafana-mcp
+#   namespace: grafana-mcp
+#   annotations:
+#     kubernetes.io/ingress.class: azure/application-gateway
+#     appgw.ingress.kubernetes.io/ssl-redirect: "true"
+#     cert-manager.io/cluster-issuer: letsencrypt-prod
+# spec:
+#   tls:
+#     - hosts: [mcp.grafana.prod.example.com]
+#       secretName: grafana-mcp-tls
+#   rules:
+#     - host: mcp.grafana.prod.example.com
+#       http:
+#         paths:
+#           - path: /*
+#             pathType: ImplementationSpecific
+#             backend:
+#               service:
+#                 name: grafana-mcp
+#                 port:
+#                   number: 8000

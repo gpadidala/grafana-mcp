@@ -1,0 +1,106 @@
+# Compose v2 — single source of truth for local stacks.
+#
+# Profiles:
+#   (default)        only the MCP server, expects an external Grafana via .env
+#   local-grafana    spins up Grafana OSS so the MCP has something to talk to
+#   inspector        attaches the official MCP Inspector UI
+#
+# Run:
+#   docker compose -f compose/docker-compose.yml up -d
+#   docker compose -f compose/docker-compose.yml --profile local-grafana up -d
+#   docker compose -f compose/docker-compose.yml --profile inspector up -d
+#
+# Podman 4.4+ supports the same file via `podman compose -f ...`.
+
+name: grafana-mcp
+
+services:
+  grafana-mcp:
+    image: grafana-mcp:dev
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        MCP_GRAFANA_VERSION: "0.12.1"
+    container_name: grafana-mcp
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      # When using the local-grafana profile, the .env URL is overridden
+      # to point at the in-network service.
+      GRAFANA_URL: ${GRAFANA_URL:-http://grafana:3000}
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-streamable-http}
+      MCP_ADDRESS: ${MCP_ADDRESS:-0.0.0.0:8000}
+      MCP_LOG_LEVEL: ${MCP_LOG_LEVEL:-info}
+      MCP_METRICS: ${MCP_METRICS:-true}
+    ports:
+      - "${MCP_HOST_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+    networks: [mcp]
+
+  # ─── Profile: local-grafana ───────────────────────────────────────────────
+  # Brings up Grafana OSS so a fresh laptop can run the full stack with
+  # `docker compose --profile local-grafana up -d`. Anonymous admin access
+  # is enabled to keep the seed flow simple — DO NOT mirror this in any
+  # cloud deployment.
+  grafana:
+    profiles: [local-grafana]
+    image: grafana/grafana-oss:11.6.4
+    container_name: grafana-mcp-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_FEATURE_TOGGLES_ENABLE: "publicDashboards"
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [mcp]
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+  # ─── Profile: inspector ───────────────────────────────────────────────────
+  # The MCP Inspector ships as an npm package; we run it via the official
+  # Node image so the host machine doesn't need a node toolchain.
+  inspector:
+    profiles: [inspector]
+    image: node:20-alpine
+    container_name: grafana-mcp-inspector
+    restart: unless-stopped
+    working_dir: /work
+    command: >
+      sh -c "npx -y @modelcontextprotocol/inspector@latest
+             --transport streamable-http
+             --server-url http://grafana-mcp:8000/mcp"
+    ports:
+      - "${INSPECTOR_HOST_PORT:-6274}:6274"
+    depends_on:
+      grafana-mcp:
+        condition: service_healthy
+    networks: [mcp]
+
+volumes:
+  grafana-data:
+
+networks:
+  mcp:
+    driver: bridge
