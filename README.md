@@ -166,8 +166,10 @@ pins images by digest.
   `ServiceMonitor`. See [`docs/metrics.md`](docs/metrics.md) for the
   full metric catalogue.
 - **Alerts**: `k8s/base/prometheusrule.yaml` ships availability, latency,
-  error-rate, memory-pressure, and HPA-saturation alerts. Each links to
-  the matching section of [`docs/runbook.md`](docs/runbook.md).
+  error-rate, memory-pressure, and HPA-saturation alerts. The full
+  catalogue with severities, queries, and triage is in
+  [`docs/alerts.md`](docs/alerts.md). Each alert links to its matching
+  section in [`docs/runbook.md`](docs/runbook.md).
 
 ## Security model
 

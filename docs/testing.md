@@ -113,6 +113,63 @@ What it exercises:
 A full per-tool table is regenerated to `reports/e2e_tool_coverage.md`
 each run.
 
+## Dashboard functional tests (Playwright)
+
+Every shipped dashboard under [`docs/dashboards/`](dashboards/) is
+imported into Grafana and rendered in a real Chromium browser. Each
+panel is classified as `data` / `no-data` / `errored`, screenshots are
+captured for visual review, and a per-panel matrix is written to
+`reports/dashboards/summary.md`.
+
+```bash
+pip install -r tests/requirements.txt
+playwright install --with-deps chromium
+
+# One-shot — brings up stack, seeds, pushes data, drives load, runs Playwright.
+make test-dashboards
+```
+
+Manual steps if you want to iterate:
+
+```bash
+docker compose --env-file .env -f compose/docker-compose.yml --profile local-grafana up -d --wait
+GRAFANA_URL_HOST=http://localhost:23000 ./tests/fixtures/seed_grafana.sh
+./tests/fixtures/generate_test_data.sh
+
+# Drive sustained load so Prometheus has multiple [5m] windows of mcp_*
+# metrics. The generator deliberately injects a small fraction of
+# malformed POSTs so the Errors dashboard's 4xx panels also light up.
+MCP_BASE_URL=http://localhost:8000 \
+  python3 tests/fixtures/drive_load.py --duration 90 --sessions 6
+
+# Render every dashboard, classify panels, screenshot.
+PYTHONPATH=. python3 -m pytest tests/e2e/test_dashboards_playwright.py -s
+open reports/dashboards/index.html
+```
+
+### Latest dashboard run
+
+| Dashboard | Data | Expected no-data | Unexpected no-data | Errored |
+|---|---:|---|---|---|
+| `grafana-mcp-overview` | 10 | Memory % (K8s) | — | — |
+| `grafana-mcp-tools` | 8 | — | — | — |
+| `grafana-mcp-sessions` | 9 | — | — | — |
+| `grafana-mcp-errors` | 4 | 5xx (none in healthy local), Pod restarts (K8s) | — | — |
+| `grafana-mcp-runtime` | 9 | GC pause p95 (only emits during GC) | — | — |
+
+Screenshots: `reports/dashboards/<uid>.png`. Gallery: open
+`reports/dashboards/index.html`.
+
+### Why some panels say "No data" locally
+
+| Panel | Reason | Where it lights up |
+|---|---|---|
+| `Memory: working set / limit` | Uses `container_memory_working_set_bytes` from cAdvisor | Real K8s cluster |
+| `Pod restarts (15m increase)` / `Restarts (1h)` | Uses `kube_pod_container_status_restarts_total` from kube-state-metrics | Real K8s cluster |
+| `5xx rate %` / `5xx in range` / `5xx rate over time` | Local stack is healthy → 0 5xx responses | Production (during incidents) |
+| `Top error endpoints` | `topk()` over an empty set renders as no-data | Production with errors |
+| `GC pause p95` | `go_gc_duration_seconds{quantile="0.95"}` only emits after the first GC cycle has been observed for that quantile | After ~30 s of sustained allocation |
+
 ## What `make test` covers
 
 | Area | File | Tests |

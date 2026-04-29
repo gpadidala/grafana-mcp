@@ -81,6 +81,15 @@ test-api:
 test-e2e:
 	PYTHONPATH=. python3 -m pytest tests/e2e $(PYTEST_ARGS) -s --junitxml=reports/junit-e2e.xml
 
+## test-dashboards: full dashboard render workflow (compose up → seed → push → load → playwright)
+test-dashboards:
+	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) --profile local-grafana up -d --wait
+	GRAFANA_URL_HOST=http://localhost:$$(grep '^GRAFANA_HOST_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 3000) ./tests/fixtures/seed_grafana.sh
+	./tests/fixtures/generate_test_data.sh
+	MCP_BASE_URL=http://localhost:$${MCP_HOST_PORT:-8000} python3 tests/fixtures/drive_load.py --duration 90 --sessions 6
+	PYTHONPATH=. python3 -m pytest tests/e2e/test_dashboards_playwright.py -s
+	@echo "→ screenshots in reports/dashboards/"
+
 ## test-aks-dryrun: server-side dry-run apply for the chosen overlay
 test-aks-dryrun:
 	kubectl kustomize k8s/overlays/$(ENV) | kubectl apply --dry-run=server -f -

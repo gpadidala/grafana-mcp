@@ -4,19 +4,30 @@ global:
   external_labels:
     stack: grafana-mcp-local
 
+# `namespace` is added as a real series label per-job. In K8s, the
+# kubernetes_sd role=pod populates this automatically; the static
+# `labels:` below is the local equivalent so the shipped dashboards'
+# `namespace` variable resolves out of the box.
+
 scrape_configs:
-  # Self-scrape so `up` always has at least one series in tests.
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+        labels:
+          namespace: grafana-mcp
+          pod: prometheus
 
-  # The MCP server's own /metrics — gives the self-monitoring dashboard
-  # something to render and validates the metrics path end-to-end.
   - job_name: grafana-mcp
     static_configs:
       - targets: ["grafana-mcp:8000"]
+        labels:
+          namespace: grafana-mcp
+          pod: grafana-mcp
+          container: mcp
 
-  # Grafana's internal metrics — Grafana exposes /metrics on its main port.
   - job_name: grafana
     static_configs:
       - targets: ["grafana:3000"]
+        labels:
+          namespace: grafana-mcp
+          pod: grafana
