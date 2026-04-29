@@ -14,8 +14,6 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 LOKI_URL="${LOKI_URL:-http://localhost:23000/api/datasources/proxy/uid/loki}"
-TEMPO_URL="${TEMPO_URL:-http://localhost:23000/api/datasources/proxy/uid/tempo}"
-TEMPO_INGEST="${TEMPO_INGEST_URL:-http://localhost:4318}"
 GRAFANA_URL_HOST="${GRAFANA_URL_HOST:-http://localhost:23000}"
 ADMIN="${GRAFANA_ADMIN:-admin:admin}"
 
@@ -23,7 +21,6 @@ ADMIN="${GRAFANA_ADMIN:-admin:admin}"
 # We hit Loki directly inside the docker network through Grafana's datasource
 # proxy so we don't have to expose port 3100 on the host.
 echo "→ pushing logs to Loki"
-NOW_NS=$(python3 -c 'import time; print(int(time.time()*1e9))')
 
 build_loki_payload() {
   python3 -c '

@@ -34,7 +34,6 @@ echo "→ /metrics smoke"
 curl -fsS "$URL/metrics" | grep -E '^(mcp_server_|go_)' | head -3
 
 echo "→ MCP tools/list (JSON-RPC)"
-INIT_PAYLOAD='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}'
 LIST_PAYLOAD='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 
 # We don't track the session id here because tools/list works without one
