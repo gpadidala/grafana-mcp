@@ -68,6 +68,24 @@ docker compose --env-file .env -f compose/docker-compose.yml \
 ./tests/fixtures/seed_grafana.sh
 ```
 
+## Connecting to dev / perf / prod Grafanas
+
+Skip the bundled Grafana — point the wrapper at your real Grafanas.
+Multiple environments can run side-by-side on different host ports
+without conflict. See [`docs/multi-env.md`](docs/multi-env.md) for the
+full guide. Quick form:
+
+```bash
+cp .env.example .env.dev
+# edit GRAFANA_URL, GRAFANA_SERVICE_ACCOUNT_TOKEN, MCP_HOST_PORT=8001
+
+./scripts/connect-remote.sh --env dev up
+# → http://localhost:8001/mcp
+```
+
+Repeat per environment (`.env.perf` on 8002, `.env.prod` on 8003); each
+gets its own Compose project so they don't collide.
+
 ## Quick start with Podman
 
 ```bash
