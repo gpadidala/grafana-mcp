@@ -5,5 +5,5 @@ mcp==1.27.0
 pyyaml==6.0.2
 # Dashboard functional tests (tests/e2e/test_dashboards_playwright.py).
 # Browser binary is installed separately: `playwright install chromium`.
-playwright==1.50.0
+playwright==1.58.0
 pytest-playwright==0.7.0
