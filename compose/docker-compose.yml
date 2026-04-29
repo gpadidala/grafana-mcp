@@ -71,11 +71,14 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_FEATURE_TOGGLES_ENABLE: "publicDashboards,traceqlEditor,traceqlSearch"
-      # Install plugins so every datasource type the MCP queries is reachable
-      # in the local stack — matches what your prod Grafana likely has.
-      # Pyroscope and Tempo datasources are core in Grafana 10+; only
-      # third-party plugins need explicit install.
-      GF_INSTALL_PLUGINS: "grafana-clickhouse-datasource"
+      # Optional plugin install. Empty by default because environments
+      # behind a corporate TLS-inspection proxy can't verify
+      # https://grafana.com and the container then refuses to start.
+      # Override in .env if you want extra datasource types locally:
+      #   GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+      # Pyroscope and Tempo are core in Grafana 11; no install needed
+      # for the four datasources auto-provisioned by this stack.
+      GF_INSTALL_PLUGINS: ${GF_INSTALL_PLUGINS:-}
     ports:
       - "${GRAFANA_HOST_PORT:-3000}:3000"
     healthcheck:

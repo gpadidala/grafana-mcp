@@ -36,13 +36,27 @@ jobs:
         uses: ibiqlik/action-yamllint@v3.1.1
         with:
           file_or_dir: compose/ k8s/ .github/
+          # Strictly fail on errors only — warnings are stylistic and
+          # noisy in real Helm/Kustomize/Compose YAML.
+          strict: false
+          no_warnings: true
           config_data: |
             extends: default
             rules:
               line-length: disable
-              comments: { min-spaces-from-content: 1 }
-              indentation: { spaces: 2, indent-sequences: consistent }
-              truthy: { check-keys: false }
+              document-start: disable
+              comments-indentation: disable
+              comments:
+                min-spaces-from-content: 1
+              indentation:
+                spaces: 2
+                indent-sequences: consistent
+              truthy:
+                check-keys: false
+              braces:
+                max-spaces-inside: 1
+              brackets:
+                max-spaces-inside: 1
 
       - name: markdownlint
         uses: DavidAnson/markdownlint-cli2-action@v18

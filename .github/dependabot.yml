@@ -2,12 +2,15 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly }
+    schedule:
+      interval: weekly
 
   - package-ecosystem: pip
     directory: /tests
-    schedule: { interval: weekly }
+    schedule:
+      interval: weekly
 
   - package-ecosystem: docker
     directory: /docker
-    schedule: { interval: weekly }
+    schedule:
+      interval: weekly
