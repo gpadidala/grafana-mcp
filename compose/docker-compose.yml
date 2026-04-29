@@ -33,6 +33,10 @@ services:
       MCP_ADDRESS: ${MCP_ADDRESS:-0.0.0.0:8000}
       MCP_LOG_LEVEL: ${MCP_LOG_LEVEL:-info}
       MCP_METRICS: ${MCP_METRICS:-true}
+      # Allow the MCP client to scope per-call to a specific Grafana org by
+      # passing X-Grafana-Org-Id. Without this allowlist MCP ignores client
+      # headers — preventing accidental privilege escalation.
+      GRAFANA_FORWARD_HEADERS: ${GRAFANA_FORWARD_HEADERS:-X-Grafana-Org-Id}
       # Default to the full upstream surface so every plugin / datasource
       # type the operator has wired up is reachable. Override via .env if
       # you want to lock down by category.
@@ -120,6 +124,10 @@ services:
     container_name: grafana-mcp-tempo
     restart: unless-stopped
     command: ["-config.file=/etc/tempo/tempo-config.yaml"]
+    ports:
+      # OTLP HTTP receiver — exposed so test fixtures can push spans
+      # from the host venv without an in-network proxy.
+      - "${TEMPO_OTLP_HTTP_HOST_PORT:-4318}:4318"
     volumes:
       - ./tempo/tempo-config.yaml:/etc/tempo/tempo-config.yaml:ro
       - tempo-data:/var/tempo
@@ -130,10 +138,15 @@ services:
     image: grafana/pyroscope:1.10.0
     container_name: grafana-mcp-pyroscope
     restart: unless-stopped
+    # Pyroscope's distroless image runs as the `pyroscope` user; rather
+    # than fight named-volume ownership, we use a tmpfs at /data so the
+    # image-default user can mkdir freely. State is intentionally
+    # ephemeral in the local stack.
     command: ["-config.file=/etc/pyroscope/pyroscope-config.yaml"]
+    tmpfs:
+      - /data:size=512m,mode=1777
     volumes:
       - ./pyroscope/pyroscope-config.yaml:/etc/pyroscope/pyroscope-config.yaml:ro
-      - pyroscope-data:/data/pyroscope
     networks: [mcp]
 
   # ─── profile: inspector ───────────────────────────────────────────────────
@@ -159,7 +172,6 @@ volumes:
   prometheus-data:
   loki-data:
   tempo-data:
-  pyroscope-data:
 
 networks:
   mcp:

@@ -67,6 +67,52 @@ For the other transports:
 ./scripts/run-inspector.sh stdio             # proxies through docker exec
 ```
 
+## End-to-end suite (`tests/e2e/`)
+
+Adds depth on top of the functional + API suites by pushing **real
+telemetry** into the LGTM stack and exercising every callable MCP tool
+against it.
+
+```bash
+# Bring up the stack with all four datasources auto-provisioned.
+docker compose --env-file .env -f compose/docker-compose.yml \
+  --profile local-grafana up -d
+
+# Mint a service-account token + create the seed dashboard.
+GRAFANA_URL_HOST=http://localhost:23000 ./tests/fixtures/seed_grafana.sh
+
+# Push real logs to Loki, traces to Tempo, extra dashboards.
+./tests/fixtures/generate_test_data.sh
+
+# Run the e2e suite (use -s to see live coverage / latency tables).
+make test-e2e
+```
+
+What it exercises:
+
+| File | What it proves |
+|---|---|
+| `test_real_data.py` | Loki returns the seeded log lines, Tempo returns OTLP traces pushed during the test, Prometheus has `up` + Go-runtime metrics, Pyroscope answers, dashboard summary resolves seeded panels. |
+| `test_concurrency.py` | 8 concurrent MCP sessions each running `list_tools` + `list_datasources` + 5×`query_prometheus` complete without cross-talk. Reports p50/p95/max. |
+| `test_multi_org.py` | `X-Grafana-Org-Id` is forwarded when present in `GRAFANA_FORWARD_HEADERS`; the JSON-RPC call succeeds with the header set. |
+| `test_tool_coverage.py` | Walks all 70 surfaced tools, calls each with a sensible payload, classifies as `ok` / `errored` / `not-applicable` (datasource/service absent in this env) / `skipped-write` / `skipped-needs-state`. Writes a coverage matrix to `reports/e2e_tool_coverage.md`. |
+
+### Latest run summary
+
+| Metric | Value |
+|---|---|
+| Total MCP tools surfaced | **70** (full upstream surface, all categories) |
+| `ok` (succeeded with sensible defaults) | **27** |
+| `errored` | **0** |
+| `not-applicable` (datasource/service not provisioned locally) | **5** (Sift, OnCall ×4) |
+| Skipped — write tool | **5** |
+| Skipped — needs caller-specific state (id, panel, etc.) | **33** |
+| Concurrency p50 / p95 / max | **0.29s / 0.32s / 0.32s** for 8 sessions × 7 calls |
+| `--disable-write` enforcement | **verified live**: write tools both filtered from `tools/list` AND refused at call time |
+
+A full per-tool table is regenerated to `reports/e2e_tool_coverage.md`
+each run.
+
 ## What `make test` covers
 
 | Area | File | Tests |

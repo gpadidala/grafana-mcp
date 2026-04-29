@@ -4,6 +4,10 @@ server:
   http_listen_port: 3100
   grpc_listen_port: 9096
 
+# Pattern ingester — required for the patterns endpoint.
+pattern_ingester:
+  enabled: true
+
 common:
   instance_addr: 127.0.0.1
   path_prefix: /loki
@@ -29,3 +33,7 @@ schema_config:
 limits_config:
   allow_structured_metadata: true
   retention_period: 168h
+  # Required for /loki/api/v1/patterns — the MCP tool query_loki_patterns
+  # depends on this endpoint.
+  metric_aggregation_enabled: true
+  pattern_ingester_tokenizable_json_fields_default: log,message

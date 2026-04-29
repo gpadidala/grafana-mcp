@@ -77,6 +77,10 @@ test-functional:
 test-api:
 	cd tests && python3 -m pytest api $(PYTEST_ARGS) --junitxml=../reports/junit-api.xml
 
+## test-e2e: pytest e2e/ — needs LGTM stack + seed + push fixtures
+test-e2e:
+	PYTHONPATH=. python3 -m pytest tests/e2e $(PYTEST_ARGS) -s --junitxml=reports/junit-e2e.xml
+
 ## test-aks-dryrun: server-side dry-run apply for the chosen overlay
 test-aks-dryrun:
 	kubectl kustomize k8s/overlays/$(ENV) | kubectl apply --dry-run=server -f -
