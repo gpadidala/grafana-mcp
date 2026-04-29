@@ -158,18 +158,35 @@ services:
     networks: [mcp]
 
   # ─── profile: inspector ───────────────────────────────────────────────────
+  # The MCP Inspector (npm) opens a UI on 6274 and a proxy on 6277. After
+  # it boots, open http://localhost:6274 in your browser and enter
+  # `http://grafana-mcp:8000/mcp` as the server URL with transport
+  # "Streamable HTTP" — the inspector container resolves that via Docker's
+  # in-network DNS.
   inspector:
     profiles: [inspector]
     image: node:20-alpine
     container_name: grafana-mcp-inspector
     restart: unless-stopped
-    working_dir: /work
-    command: >
-      sh -c "npx -y @modelcontextprotocol/inspector@latest
-             --transport streamable-http
-             --server-url http://grafana-mcp:8000/mcp"
+    environment:
+      # Bind to all interfaces so the host's browser can reach the UI.
+      # Default is localhost-inside-container, which is unreachable from
+      # outside.
+      HOST: "0.0.0.0"
+      # Skip the Inspector's auto-launched browser-bound auth token. Safe
+      # only on a local dev box — never expose this container publicly.
+      DANGEROUSLY_OMIT_AUTH: "true"
+      # Optional escape hatch for environments behind a corporate
+      # TLS-inspection firewall where npm can't verify the registry's
+      # cert chain. Local-dev only — never in production.
+      NODE_TLS_REJECT_UNAUTHORIZED: "${NODE_TLS_REJECT_UNAUTHORIZED:-0}"
+    command:
+      - sh
+      - -c
+      - npm config set strict-ssl false && npx -y @modelcontextprotocol/inspector@latest
     ports:
       - "${INSPECTOR_HOST_PORT:-6274}:6274"
+      - "${INSPECTOR_PROXY_HOST_PORT:-6277}:6277"
     depends_on:
       grafana-mcp:
         condition: service_healthy
