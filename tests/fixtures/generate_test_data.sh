@@ -13,6 +13,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
+# Resolve Python interpreter (Windows: `python`; Linux/macOS: `python3`).
+PYTHON="${PYTHON:-$(command -v python3 || command -v python || true)}"
+if [ -z "${PYTHON}" ]; then
+  echo "error: no python interpreter found in PATH" >&2
+  exit 1
+fi
+
 LOKI_URL="${LOKI_URL:-http://localhost:23000/api/datasources/proxy/uid/loki}"
 GRAFANA_URL_HOST="${GRAFANA_URL_HOST:-http://localhost:23000}"
 ADMIN="${GRAFANA_ADMIN:-admin:admin}"
@@ -23,7 +30,7 @@ ADMIN="${GRAFANA_ADMIN:-admin:admin}"
 echo "→ pushing logs to Loki"
 
 build_loki_payload() {
-  python3 -c '
+  ${PYTHON} -c '
 import json, sys, time
 now_ns = int(time.time() * 1e9)
 streams = [
@@ -76,7 +83,7 @@ echo "→ pushing traces to Tempo (OTLP HTTP at ${TEMPO_HOST_OTLP})"
 # could expose 4318 on the host. For simplicity we hit the receiver via the
 # grafana-mcp-grafana container which shares the network.
 push_trace() {
-  python3 - <<PY
+  ${PYTHON} - <<PY
 import json, time, secrets, urllib.request
 trace_id = secrets.token_hex(16)
 span_id  = secrets.token_hex(8)
@@ -121,7 +128,7 @@ except Exception as e:
 PY
 }
 
-python3 - <<PY
+${PYTHON} - <<PY
 import json, time, secrets, urllib.request, sys
 endpoint = "${TEMPO_HOST_OTLP}/v1/traces"
 sent = 0

@@ -12,6 +12,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Resolve Python interpreter (Windows: `python`; Linux/macOS: `python3`).
+PYTHON="${PYTHON:-$(command -v python3 || command -v python || true)}"
+if [ -z "${PYTHON}" ]; then
+  echo "error: no python interpreter found in PATH" >&2
+  exit 1
+fi
+
 CLEANUP() {
   docker compose --env-file .env -f compose/docker-compose.yml down --remove-orphans >/dev/null 2>&1 || true
 }
@@ -41,7 +48,7 @@ LIST_PAYLOAD='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 RESPONSE=$(curl -fsS -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -X POST "$URL/mcp" --data "$LIST_PAYLOAD" || true)
 
-TOOL_COUNT=$(printf '%s' "$RESPONSE" | python3 -c 'import json,sys,re
+TOOL_COUNT=$(printf '%s' "$RESPONSE" | ${PYTHON} -c 'import json,sys,re
 raw=sys.stdin.read()
 # streamable-http may wrap as SSE; extract the first JSON payload.
 m=re.search(r"\{.*\}", raw, re.S)

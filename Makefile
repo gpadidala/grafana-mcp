@@ -71,23 +71,23 @@ test: lint test-functional test-api
 
 ## test-functional: pytest functional/
 test-functional:
-	cd tests && python3 -m pytest functional $(PYTEST_ARGS) --junitxml=../reports/junit-functional.xml
+	cd tests && $$(command -v python3 || command -v python) -m pytest functional $(PYTEST_ARGS) --junitxml=../reports/junit-functional.xml
 
 ## test-api: pytest api/
 test-api:
-	cd tests && python3 -m pytest api $(PYTEST_ARGS) --junitxml=../reports/junit-api.xml
+	cd tests && $$(command -v python3 || command -v python) -m pytest api $(PYTEST_ARGS) --junitxml=../reports/junit-api.xml
 
 ## test-e2e: pytest e2e/ — needs LGTM stack + seed + push fixtures
 test-e2e:
-	PYTHONPATH=. python3 -m pytest tests/e2e $(PYTEST_ARGS) -s --junitxml=reports/junit-e2e.xml
+	PYTHONPATH=. $$(command -v python3 || command -v python) -m pytest tests/e2e $(PYTEST_ARGS) -s --junitxml=reports/junit-e2e.xml
 
 ## test-dashboards: full dashboard render workflow (compose up → seed → push → load → playwright)
 test-dashboards:
 	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) --profile local-grafana up -d --wait
 	GRAFANA_URL_HOST=http://localhost:$$(grep '^GRAFANA_HOST_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 3000) ./tests/fixtures/seed_grafana.sh
 	./tests/fixtures/generate_test_data.sh
-	MCP_BASE_URL=http://localhost:$${MCP_HOST_PORT:-8000} python3 tests/fixtures/drive_load.py --duration 90 --sessions 6
-	PYTHONPATH=. python3 -m pytest tests/e2e/test_dashboards_playwright.py -s
+	MCP_BASE_URL=http://localhost:$${MCP_HOST_PORT:-8000} $$(command -v python3 || command -v python) tests/fixtures/drive_load.py --duration 90 --sessions 6
+	PYTHONPATH=. $$(command -v python3 || command -v python) -m pytest tests/e2e/test_dashboards_playwright.py -s
 	@echo "→ screenshots in reports/dashboards/"
 
 ## test-aks-dryrun: server-side dry-run apply for the chosen overlay
