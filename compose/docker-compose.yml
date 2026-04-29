@@ -90,6 +90,11 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./provisioning:/etc/grafana/provisioning:ro
+      # The provisioning provider in compose/provisioning/dashboards/
+      # dashboards.yaml points at /var/lib/grafana/dashboards. Mount the
+      # repo's docs/dashboards/ there so the 5 production dashboards are
+      # auto-loaded the first time Grafana boots.
+      - ../docs/dashboards:/var/lib/grafana/dashboards:ro
 
   prometheus:
     profiles: [local-grafana]
