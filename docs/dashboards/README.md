@@ -7,13 +7,26 @@ shipped with this repo (or any Prometheus reachable on `/metrics`).
 
 ## What's here
 
-| File | Title | UID | Panels |
-|---|---|---|---:|
-| [`grafana-mcp-overview.json`](grafana-mcp-overview.json) | Overview / SLO | `grafana-mcp-overview` | 12 |
-| [`grafana-mcp-tools.json`](grafana-mcp-tools.json) | Tools / Operations | `grafana-mcp-tools` | 8 |
-| [`grafana-mcp-sessions.json`](grafana-mcp-sessions.json) | Sessions | `grafana-mcp-sessions` | 9 |
-| [`grafana-mcp-errors.json`](grafana-mcp-errors.json) | Errors | `grafana-mcp-errors` | 9 |
-| [`grafana-mcp-runtime.json`](grafana-mcp-runtime.json) | Runtime / Resources | `grafana-mcp-runtime` | 10 |
+| File | Title | UID | Panels | Audience |
+|---|---|---|---:|---|
+| [`grafana-mcp-overview.json`](grafana-mcp-overview.json) | Overview / SLO | `grafana-mcp-overview` | 16 | First page on-call opens during an incident |
+| [`grafana-mcp-tools.json`](grafana-mcp-tools.json) | Tools / Operations | `grafana-mcp-tools` | 12 | Per-tool latency / RPS drill-down |
+| [`grafana-mcp-sessions.json`](grafana-mcp-sessions.json) | Sessions | `grafana-mcp-sessions` | 13 | Concurrency, session lifetime, client cache |
+| [`grafana-mcp-errors.json`](grafana-mcp-errors.json) | Errors | `grafana-mcp-errors` | 13 | 4xx/5xx, restarts, upstream latency |
+| [`grafana-mcp-runtime.json`](grafana-mcp-runtime.json) | Runtime / Resources | `grafana-mcp-runtime` | 14 | Goroutines, GC, heap, CPU, FDs |
+| [`grafana-mcp-slo.json`](grafana-mcp-slo.json) | SLO / Error budget | `grafana-mcp-slo` | 18 | SLO posture for execs + multi-window burn rate |
+
+All dashboards share:
+
+- **Cross-dashboard navigation** — every dashboard has links to the
+  others in its top-right; key panels deep-link via the `links` field.
+- **Annotations** — pod restarts and deploys (when running on K8s with
+  kube-state-metrics) appear as vertical bars across every time-series.
+- **Alert-aligned thresholds** — colours and dashed reference lines
+  match the rules in [`k8s/base/prometheusrule.yaml`](../../k8s/base/prometheusrule.yaml)
+  and the catalogue in [`docs/alerts.md`](../alerts.md).
+- **Hover tooltips** — every panel has a `description` so an unfamiliar
+  reader gets context without leaving the dashboard.
 
 ## Importing
 
@@ -32,6 +45,23 @@ done
 ```
 
 Or via UI: **Dashboards → Import → Upload JSON file**.
+
+If you're running the local Compose stack with the `local-grafana`
+profile, the dashboards are **auto-loaded** — `compose/provisioning/`
+mounts this directory into Grafana at `/var/lib/grafana/dashboards`.
+
+## SLO dashboard variables
+
+The SLO dashboard takes three constants you can edit at the top of the
+page:
+
+| Variable | Default | What it controls |
+|---|---|---|
+| `availability_target` | `99.9` | The availability SLO (in %) used to compute error-budget remaining and burn rate. |
+| `latency_target_seconds` | `5` | The p95 latency SLO threshold. |
+| `errors_target_pct` | `1` | The 5xx error-rate budget over the 30-day window. |
+
+Tune these to your team's actual commitment.
 
 ## Required metrics
 
@@ -94,3 +124,4 @@ descriptors.
 | `5xx rate %` / `5xx in range` / `5xx rate over time` | Healthy local stack → 0 5xx responses | Production (during incidents) |
 | `Top error endpoints` | `topk()` over an empty set renders as no-data | Production with errors |
 | `GC pause p95` | `go_gc_duration_seconds{quantile="0.95"}` only emits after the first GC cycle | After ~30 s of sustained allocation |
+| SLO dashboard error-budget panels | Need ≥ 30 d of `up` history to fill the rolling window | Long-running production |

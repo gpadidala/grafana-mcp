@@ -1,0 +1,178 @@
+{
+  "title": "grafana-mcp — SLO / Error budget",
+  "uid": "grafana-mcp-slo",
+  "tags": ["grafana-mcp", "slo"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-30d", "to": "now" },
+  "annotations": { "list": [
+    { "name": "Restarts", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "enable": true, "iconColor": "red",
+      "expr": "changes(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[5m]) > 0", "titleFormat": "Pod restart", "tagKeys": "pod" }
+  ] },
+  "templating": { "list": [
+    { "name": "datasource", "type": "datasource", "query": "prometheus", "current": { "text": "Prometheus", "value": "prometheus" } },
+    { "name": "namespace",  "type": "query", "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "query": "label_values(up{job=~\".*grafana-mcp.*\"}, namespace)",
+      "current": { "text": "grafana-mcp", "value": "grafana-mcp" } },
+    { "name": "availability_target", "type": "textbox", "label": "Availability SLO target (%)",
+      "current": { "text": "99.9", "value": "99.9" } },
+    { "name": "latency_target_seconds", "type": "textbox", "label": "Latency SLO target (p95 seconds)",
+      "current": { "text": "5", "value": "5" } },
+    { "name": "errors_target_pct", "type": "textbox", "label": "Errors SLO budget (5xx %)",
+      "current": { "text": "1", "value": "1" } }
+  ] },
+  "links": [
+    { "title": "Overview", "type": "link", "icon": "external link", "url": "/d/grafana-mcp-overview", "targetBlank": false },
+    { "title": "Errors",   "type": "link", "icon": "external link", "url": "/d/grafana-mcp-errors",   "targetBlank": false },
+    { "title": "Tools",    "type": "link", "icon": "external link", "url": "/d/grafana-mcp-tools",    "targetBlank": false },
+    { "title": "Alerts catalogue", "type": "link", "icon": "doc",
+      "url": "https://github.com/gpadidala/grafana-mcp/blob/main/docs/alerts.md", "targetBlank": true }
+  ],
+  "panels": [
+    { "type": "row", "id": 100, "title": "Definitions", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+
+    { "id": 1, "type": "text", "title": "How to read this dashboard",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 1 },
+      "options": { "mode": "markdown", "content": "**SLI** = the actual measurement.   **SLO** = the target.   **Error budget** = the allowed delta over the SLO window.   **Burn rate** = how fast you're consuming the budget — at 1× burn you exhaust the budget exactly at the end of the window; at 14× burn you've spent the entire 30-day budget in ~2 days.\n\n**Targets shown below are dashboard variables** — change them at the top of the page to fit your team's commitment. Defaults: 99.9% availability, 5s p95 latency, 1% 5xx budget over a 30-day rolling window.\n\nAlerts in [`docs/alerts.md`](https://github.com/gpadidala/grafana-mcp/blob/main/docs/alerts.md) are tuned conservatively so they fire **before** the SLO actually breaks." } },
+
+    { "type": "row", "id": 200, "title": "Availability SLO", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 } },
+
+    { "id": 10, "type": "stat", "title": "30-day availability (SLI)",
+      "description": "Fraction of scrapes where MCP was up. The closer to 100%, the better. SLO target shown alongside.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 7 },
+      "targets": [ { "expr": "100 * avg_over_time(up{job=~\".*grafana-mcp.*\", namespace=~\"$namespace\"}[30d])", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "background", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 3, "min": 0, "max": 100,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "yellow", "value": 99 }, { "color": "green", "value": 99.9 } ] } } } },
+
+    { "id": 11, "type": "stat", "title": "Availability SLO target",
+      "description": "Set via dashboard variable.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 7 },
+      "targets": [ { "expr": "vector(${availability_target})", "refId": "A" } ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 3, "color": { "mode": "fixed", "fixedColor": "blue" } } } },
+
+    { "id": 12, "type": "stat", "title": "Error budget remaining (30d)",
+      "description": "Percentage of the availability error budget that's left. Hitting 0% means the SLO has been breached for the window.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 7 },
+      "targets": [ { "expr": "clamp_min(100 * (1 - (1 - avg_over_time(up{job=~\".*grafana-mcp.*\", namespace=~\"$namespace\"}[30d])) / ((100 - ${availability_target}) / 100)), 0)", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "background", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1, "min": 0, "max": 100,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "yellow", "value": 25 }, { "color": "green", "value": 50 } ] } } } },
+
+    { "id": 13, "type": "stat", "title": "Burn rate (1h)",
+      "description": "Speed of error-budget consumption over the last hour, normalised to '1× burn = budget exhausts exactly on schedule'. >14× is page-worthy by SRE Workbook tradition.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 7 },
+      "targets": [ { "expr": "(1 - avg_over_time(up{job=~\".*grafana-mcp.*\", namespace=~\"$namespace\"}[1h])) / ((100 - ${availability_target}) / 100)", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "background", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 6 }, { "color": "red", "value": 14 } ] } } } },
+
+    { "id": 14, "type": "timeseries", "title": "Burn rate over time",
+      "description": "Multi-window burn rate. The SRE Workbook recommends paging on (5min × 14× AND 1h × 14×) OR (30min × 6× AND 6h × 6×).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 13 },
+      "targets": [
+        { "expr": "(1 - avg_over_time(up{job=~\".*grafana-mcp.*\", namespace=~\"$namespace\"}[5m]))  / ((100 - ${availability_target}) / 100)", "legendFormat": "5m",  "refId": "A" },
+        { "expr": "(1 - avg_over_time(up{job=~\".*grafana-mcp.*\", namespace=~\"$namespace\"}[30m])) / ((100 - ${availability_target}) / 100)", "legendFormat": "30m", "refId": "B" },
+        { "expr": "(1 - avg_over_time(up{job=~\".*grafana-mcp.*\", namespace=~\"$namespace\"}[1h]))  / ((100 - ${availability_target}) / 100)", "legendFormat": "1h",  "refId": "C" },
+        { "expr": "(1 - avg_over_time(up{job=~\".*grafana-mcp.*\", namespace=~\"$namespace\"}[6h]))  / ((100 - ${availability_target}) / 100)", "legendFormat": "6h",  "refId": "D" }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean","max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 6 }, { "color": "red", "value": 14 } ] },
+        "custom": { "thresholdsStyle": { "mode": "dashed" }, "lineWidth": 2 } } } },
+
+    { "type": "row", "id": 300, "title": "Latency SLO (p95)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 } },
+
+    { "id": 20, "type": "stat", "title": "p95 latency (5m)",
+      "description": "Recent p95 across all MCP methods. Compare against the latency SLO target.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 23 },
+      "targets": [ { "expr": "histogram_quantile(0.95, sum by (le) (rate(mcp_server_operation_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "background", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 } ] } } } },
+
+    { "id": 21, "type": "stat", "title": "p95 latency target",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 23 },
+      "targets": [ { "expr": "vector(${latency_target_seconds})", "refId": "A" } ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "blue" } } } },
+
+    { "id": 22, "type": "stat", "title": "Fraction below target (24h)",
+      "description": "Share of operations completing within the latency SLO over the last 24h. Higher is better.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 23 },
+      "targets": [ { "expr": "100 * sum(rate(mcp_server_operation_duration_seconds_bucket{namespace=~\"$namespace\", le=\"5\"}[24h])) / clamp_min(sum(rate(mcp_server_operation_duration_seconds_count{namespace=~\"$namespace\"}[24h])), 1)", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "background", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2, "min": 0, "max": 100,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "yellow", "value": 95 }, { "color": "green", "value": 99 } ] } } } },
+
+    { "id": 23, "type": "timeseries", "title": "p95 latency vs SLO",
+      "description": "p95 over time with the SLO target as a dashed reference line.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 23 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(mcp_server_operation_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))", "legendFormat": "p95", "refId": "A" },
+        { "expr": "vector(${latency_target_seconds})", "legendFormat": "SLO", "refId": "B" }
+      ],
+      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 2, "custom": { "lineWidth": 2 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "SLO" }, "properties": [
+            { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } },
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }
+          ] }
+        ] } },
+
+    { "type": "row", "id": 400, "title": "Errors SLO (5xx %)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 } },
+
+    { "id": 30, "type": "stat", "title": "Current 5xx % (5m)",
+      "description": "Server error rate over the last 5 minutes.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 30 },
+      "targets": [ { "expr": "100 * (sum(rate(http_server_request_duration_seconds_count{namespace=~\"$namespace\", http_response_status_code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_server_request_duration_seconds_count{namespace=~\"$namespace\"}[5m])), 1)", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "background", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 3, "min": 0,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 } ] } } } },
+
+    { "id": 31, "type": "stat", "title": "Error-rate budget",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 30 },
+      "targets": [ { "expr": "vector(${errors_target_pct})", "refId": "A" } ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "percent", "color": { "mode": "fixed", "fixedColor": "blue" } } } },
+
+    { "id": 32, "type": "stat", "title": "30-day 5xx %",
+      "description": "Cumulative server-error rate over a 30-day rolling window.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 30 },
+      "targets": [ { "expr": "100 * (sum(increase(http_server_request_duration_seconds_count{namespace=~\"$namespace\", http_response_status_code=~\"5..\"}[30d])) or vector(0)) / clamp_min(sum(increase(http_server_request_duration_seconds_count{namespace=~\"$namespace\"}[30d])), 1)", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "background", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 3, "min": 0 } } },
+
+    { "id": 33, "type": "stat", "title": "Errors budget remaining",
+      "description": "How much of the 30-day error budget is still available. 0% = SLO breached.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 30 },
+      "targets": [ { "expr": "clamp_min(100 * (1 - ((100 * (sum(increase(http_server_request_duration_seconds_count{namespace=~\"$namespace\", http_response_status_code=~\"5..\"}[30d])) or vector(0)) / clamp_min(sum(increase(http_server_request_duration_seconds_count{namespace=~\"$namespace\"}[30d])), 1)) / ${errors_target_pct})), 0)", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "background", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1, "min": 0, "max": 100,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "yellow", "value": 25 }, { "color": "green", "value": 50 } ] } } } }
+  ]
+}

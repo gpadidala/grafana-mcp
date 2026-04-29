@@ -79,9 +79,42 @@ compose_cmd() {
   fi
 }
 
+_corp_network_preflight() {
+  # Warn (not error) on common HTTPS / corporate-network misconfigurations.
+  local url
+  url=$(grep -E '^GRAFANA_URL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+  if [[ "$url" =~ ^https:// ]]; then
+    local skip ca proxy
+    skip=$(grep -E '^MCP_TLS_SKIP_VERIFY=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+    ca=$(grep   -E '^MCP_TLS_CA_FILE=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+    proxy=$(grep -E '^HTTPS_PROXY=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+    if [ -z "$skip" ] && [ -z "$ca" ]; then
+      echo "  note: ${url} is HTTPS but neither MCP_TLS_SKIP_VERIFY nor"
+      echo "        MCP_TLS_CA_FILE is set in ${ENV_FILE}. If MCP fails to"
+      echo "        reach Grafana with x509 cert errors, see"
+      echo "        docs/multi-env.md §\"TLS gotchas\"."
+    fi
+    if [ -n "${HTTP_PROXY:-}${HTTPS_PROXY:-}" ] && [ -z "$proxy" ]; then
+      echo "  note: HTTP_PROXY/HTTPS_PROXY is set in your shell but not in"
+      echo "        ${ENV_FILE}. Compose only sees env-file values; copy"
+      echo "        the proxy URL into ${ENV_FILE} so the container reaches"
+      echo "        upstream Grafana through your corporate proxy."
+    fi
+    if [ -n "$ca" ] && [ ! -f "certs/$(basename "$ca" 2>/dev/null || echo ca.pem)" ]; then
+      if [ ! -f "compose/docker-compose.override.yml" ]; then
+        echo "  note: MCP_TLS_CA_FILE=${ca} is set but"
+        echo "        compose/docker-compose.override.yml is missing."
+        echo "        Copy compose/docker-compose.override.yml.example,"
+        echo "        drop your CA at certs/ca.pem, and re-run."
+      fi
+    fi
+  fi
+}
+
 case "$ACTION" in
   up)
     echo "→ bringing up MCP for env=${ENV_NAME} (project=${PROJECT})"
+    _corp_network_preflight
     compose_cmd up -d grafana-mcp
     PORT=$(grep -E '^MCP_HOST_PORT=' "$ENV_FILE" | cut -d= -f2- | tr -d '"')
     PORT="${PORT:-8000}"

@@ -37,24 +37,36 @@ REPORT_DIR = Path("reports/dashboards")
 # they depend on K8s metrics (kube-state-metrics, cAdvisor) that aren't
 # scraped here. Tracked so the assertion isn't noisy in local runs.
 EXPECTED_NO_DATA_LOCAL = {
-    "grafana-mcp-overview": {"Memory: working set / limit"},
+    "grafana-mcp-overview": {
+        "Memory: working set / limit",   # K8s metric only
+        "5xx rate %",                    # healthy local stack → 0
+    },
     "grafana-mcp-errors": {
         "Pod restarts (15m increase)",
         "Restarts (1h)",
-        # Top error endpoints uses topk(...) which is empty when no rows
-        # match — Grafana renders this as "No data" rather than 0.
         "Top error endpoints",
-        # 5xx panels are correctly empty in a healthy local stack — the
-        # MCP server doesn't 5xx under any of the synthetic loads we
-        # apply, so these panels show "No data". In production they
-        # would only light up during real incidents.
         "5xx rate %",
         "5xx in range",
         "5xx rate over time",
     },
-    # Sessions histograms only emit on session close; if no sessions
-    # closed in the load window, the duration heatmap is empty.
+    # Sessions histograms only emit on session close; the heatmap may be
+    # empty if the load window's sessions are all still open.
     "grafana-mcp-sessions": {"Session-duration heatmap", "p95 session duration"},
+    "grafana-mcp-runtime": {"GC pause p95"},
+    # SLO dashboard math depends on 30d of `up` history and 30d of
+    # http_server_request_duration_seconds increases. Locally the
+    # compose stack hasn't been running anywhere near 30 days, so the
+    # rolling-window panels are correctly empty / static.
+    "grafana-mcp-slo": {
+        "30-day availability (SLI)",
+        "Error budget remaining (30d)",
+        "Burn rate (1h)",
+        "Burn rate over time",
+        "30-day 5xx %",
+        "Errors budget remaining",
+        "Fraction below target (24h)",
+        "p95 latency vs SLO",
+    },
 }
 
 

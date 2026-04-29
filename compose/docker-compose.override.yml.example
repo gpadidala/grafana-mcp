@@ -6,13 +6,18 @@
 
 services:
   grafana-mcp:
-    # Mount client TLS material so MCP can talk to a TLS-fronted Grafana.
+    # Corporate-CA bundle — drop the cert at certs/ca.pem on the host.
+    # Required when your corporate firewall does TLS inspection and
+    # re-signs upstream certs with an internal CA the container doesn't
+    # trust by default. See docs/multi-env.md §"TLS gotchas".
     volumes:
-      - ./certs:/certs:ro
+      - ../certs:/certs:ro
     environment:
-      MCP_TLS_CERT_FILE: /certs/client.crt
-      MCP_TLS_KEY_FILE: /certs/client.key
-      MCP_TLS_CA_FILE: /certs/ca.crt
+      # Either skip verification (dev/lab only):
+      # MCP_TLS_SKIP_VERIFY: "true"
+      # Or trust the corporate CA properly (recommended):
+      MCP_TLS_CA_FILE: /certs/ca.pem
+      SSL_CERT_FILE: /certs/ca.pem
     # Move the host port if 8000 is taken.
-    ports: !override
-      - "18000:8000"
+    # ports: !override
+    #   - "18000:8000"

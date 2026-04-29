@@ -203,52 +203,109 @@ up only the MCP service. See [`scripts/connect-remote.sh`](../scripts/connect-re
 
 ---
 
-## 5. TLS gotchas (very common on corporate networks)
+## 5. Corporate networks (HTTPS, TLS-inspecting proxies, forward proxies)
 
-Symptom in `docker logs`:
+If your Grafana lives behind a corporate firewall, three things tend to
+break in stack order. Symptoms and fixes:
 
+### 5a. Forward proxy required for outbound
+
+**Symptom:** container can't resolve / can't reach the public Grafana
+hostname. Logs show `dial tcp: i/o timeout`.
+
+**Cause:** corporate networks force all outbound traffic through a
+forward proxy. The MCP container's Go HTTP client honours
+`HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` env vars, and the compose
+file already passes them through.
+
+**Fix:** add to `.env.<env>`:
+
+```env
+HTTP_PROXY=http://corp-proxy.example.com:3128
+HTTPS_PROXY=http://corp-proxy.example.com:3128
+NO_PROXY=localhost,127.0.0.1,.svc.cluster.local,.example.com
 ```
-x509: certificate signed by unknown authority
-```
 
-Cause: your corporate firewall does TLS inspection — it re-signs
-upstream certs with an internal CA that the MCP container doesn't
-trust. Two fixes:
+Then `--force-recreate grafana-mcp`.
 
-### Fix A — skip TLS verification (insecure but simplest)
+### 5b. TLS-inspection breaking cert chain
+
+**Symptom:** `x509: certificate signed by unknown authority` in MCP
+logs the moment it tries to call Grafana.
+
+**Cause:** your corporate proxy is doing TLS inspection — it re-signs
+upstream certs with an internal CA the container doesn't trust by
+default.
+
+**Fix A — skip verification (dev / lab only):**
 
 ```env
 # in .env.<env>
 MCP_TLS_SKIP_VERIFY=true
 ```
 
-Acceptable for **internal** dev/perf where the network path is already
-trusted. **Never set this in `.env.prod`.**
+Fast, insecure, fine for **internal** dev/perf where the network path
+is already trusted. **Never in `.env.prod`.**
 
-### Fix B — mount your corporate CA bundle (proper)
+**Fix B — mount your corporate CA bundle (recommended for any prod-pointing MCP):**
 
-1. Get your corporate CA bundle from IT (typically `corp-root-ca.pem`).
-   Put it under `certs/` in the repo:
+1. Get your corporate CA bundle from IT (something like
+   `corp-root-ca.pem`). Drop it under `certs/`:
    ```bash
    mkdir -p certs
    cp /path/to/corp-root-ca.pem certs/ca.pem
    ```
-2. Create `compose/docker-compose.override.yml`:
-   ```yaml
-   services:
-     grafana-mcp:
-       volumes:
-         - ../certs:/certs:ro
+2. Copy the override template:
+   ```bash
+   cp compose/docker-compose.override.yml.example compose/docker-compose.override.yml
    ```
-3. In `.env.<env>`:
+   The provided override mounts `../certs:/certs:ro` and sets both
+   `MCP_TLS_CA_FILE=/certs/ca.pem` (for MCP→Grafana) and
+   `SSL_CERT_FILE=/certs/ca.pem` (for any other outbound the MCP makes,
+   e.g. an OTel collector).
+3. `.env.<env>` keeps `MCP_TLS_CA_FILE` aligned (or override per-env):
    ```env
    MCP_TLS_CA_FILE=/certs/ca.pem
    ```
 
-Compose merges `docker-compose.override.yml` automatically. The wrapper
-entrypoint already translates `MCP_TLS_CA_FILE` → `--tls-ca-file`.
+Both `certs/` and `compose/docker-compose.override.yml` are in
+`.gitignore` so the cert never ships to git.
 
-`certs/` is in the project `.gitignore` so the cert never ships to git.
+### 5c. The `connect-remote.sh` preflight catches misconfig
+
+Running `./scripts/connect-remote.sh --env prod up` warns you if any
+of these are missing when the URL is HTTPS:
+
+```
+note: https://grafana.prod.example.com is HTTPS but neither
+      MCP_TLS_SKIP_VERIFY nor MCP_TLS_CA_FILE is set in .env.prod.
+note: HTTP_PROXY/HTTPS_PROXY is set in your shell but not in .env.prod.
+      Compose only sees env-file values; copy the proxy URL into
+      .env.prod so the container reaches upstream Grafana through your
+      corporate proxy.
+note: MCP_TLS_CA_FILE=/certs/ca.pem is set but
+      compose/docker-compose.override.yml is missing.
+```
+
+These are warnings, not errors — `up` proceeds anyway, but the warning
+gives you the next thing to check if MCP fails to connect.
+
+### 5d. Decision tree
+
+```
+HTTPS Grafana URL?
+├── No  → nothing to do, just GRAFANA_URL=http://...
+└── Yes
+    ├── Cert is publicly trusted (LetsEncrypt etc.)?
+    │   └── Done. No extra config needed.
+    └── Cert chain has a corporate / internal root?
+        ├── Behind a forward proxy?
+        │   └── Set HTTP_PROXY / HTTPS_PROXY / NO_PROXY in .env.<env>.
+        ├── Proxy does TLS inspection?
+        │   ├── dev/lab: MCP_TLS_SKIP_VERIFY=true
+        │   └── prod: drop certs/ca.pem + use the override.yml + MCP_TLS_CA_FILE
+        └── Hit GrafanaCloud? Public certs — only proxy config matters.
+```
 
 ---
 

@@ -178,11 +178,18 @@ pins images by digest.
 - **Tracing**: set `OTEL_EXPORTER_OTLP_ENDPOINT` and traces flow to Tempo or
   any OTLP collector.
 - **Self-monitoring dashboards**: production-grade set under
-  [`docs/dashboards/`](docs/dashboards/) — five dashboards (Overview /
-  SLO, Tools, Sessions, Errors, Runtime) with live previews in
-  [`docs/dashboards/README.md`](docs/dashboards/README.md). Works
-  against any Prometheus that scrapes the shipped `ServiceMonitor`. See
-  [`docs/metrics.md`](docs/metrics.md) for the full metric catalogue.
+  [`docs/dashboards/`](docs/dashboards/) — six dashboards (Overview,
+  Tools, Sessions, Errors, Runtime, **SLO / Error budget**) with
+  cross-dashboard drill-down links, alert-aligned thresholds, deploy +
+  restart annotations, and configurable SLO targets. Live previews in
+  [`docs/dashboards/README.md`](docs/dashboards/README.md). When using
+  the local Compose stack with `--profile local-grafana`, the dashboards
+  are **auto-loaded** at boot.
+- **Metrics catalogue**: [`docs/metrics.md`](docs/metrics.md) — every
+  metric the wrapper exposes, with labels and useful PromQL.
+- **Alert catalogue**: [`docs/alerts.md`](docs/alerts.md) — every alert
+  in the shipped PrometheusRule, with severity / expression / common
+  causes / runbook anchor.
 - **Alerts**: `k8s/base/prometheusrule.yaml` ships availability, latency,
   error-rate, memory-pressure, and HPA-saturation alerts. The full
   catalogue with severities, queries, and triage is in

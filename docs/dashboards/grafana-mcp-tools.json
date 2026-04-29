@@ -3,9 +3,16 @@
   "uid": "grafana-mcp-tools",
   "tags": ["grafana-mcp", "tools"],
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-3h", "to": "now" },
+  "annotations": {
+    "list": [
+      { "name": "Restarts", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "enable": true, "iconColor": "red",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[5m]) > 0",
+        "titleFormat": "Pod restart", "tagKeys": "pod" }
+    ]
+  },
   "templating": {
     "list": [
       { "name": "datasource", "type": "datasource", "query": "prometheus",
@@ -16,60 +23,106 @@
         "current": { "text": "grafana-mcp", "value": "grafana-mcp" } },
       { "name": "method", "type": "query",
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "query": "label_values(mcp_server_operation_duration_seconds_count{namespace=\"$namespace\"}, mcp_method_name)",
+        "query": "label_values(mcp_server_operation_duration_seconds_count{namespace=~\"$namespace\"}, mcp_method_name)",
         "multi": true, "includeAll": true,
         "current": { "text": "All", "value": "$__all" } }
     ]
   },
+  "links": [
+    { "title": "Overview", "type": "link", "icon": "external link", "url": "/d/grafana-mcp-overview", "targetBlank": false },
+    { "title": "Errors",   "type": "link", "icon": "external link", "url": "/d/grafana-mcp-errors",   "targetBlank": false },
+    { "title": "SLO",      "type": "link", "icon": "external link", "url": "/d/grafana-mcp-slo",      "targetBlank": false }
+  ],
   "panels": [
-    { "id": 1, "type": "stat", "title": "Selected methods — RPS",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
-      "targets": [ { "expr": "sum(rate(mcp_server_operation_duration_seconds_count{namespace=\"$namespace\", mcp_method_name=~\"$method\"}[5m]))", "refId": "A" } ],
-      "fieldConfig": { "defaults": { "unit": "reqps" } } },
+    { "type": "row", "id": 100, "title": "Selection summary", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
 
-    { "id": 2, "type": "stat", "title": "Selected methods — total calls (range)",
+    { "id": 1, "type": "stat", "title": "RPS — selected methods",
+      "description": "Calls/sec across the methods selected in the `method` variable.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
-      "targets": [ { "expr": "sum(increase(mcp_server_operation_duration_seconds_count{namespace=\"$namespace\", mcp_method_name=~\"$method\"}[$__range]))", "refId": "A" } ] },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "targets": [ { "expr": "sum(rate(mcp_server_operation_duration_seconds_count{namespace=~\"$namespace\", mcp_method_name=~\"$method\"}[5m]))", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 1 } } },
 
-    { "id": 3, "type": "stat", "title": "Avg latency",
+    { "id": 2, "type": "stat", "title": "Total calls in range",
+      "description": "Cumulative invocations of the selected methods during the time range.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
-      "targets": [ { "expr": "sum(rate(mcp_server_operation_duration_seconds_sum{namespace=\"$namespace\", mcp_method_name=~\"$method\"}[5m])) / sum(rate(mcp_server_operation_duration_seconds_count{namespace=\"$namespace\", mcp_method_name=~\"$method\"}[5m]))", "refId": "A" } ],
-      "fieldConfig": { "defaults": { "unit": "s" } } },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "targets": [ { "expr": "sum(increase(mcp_server_operation_duration_seconds_count{namespace=~\"$namespace\", mcp_method_name=~\"$method\"}[$__range]))", "refId": "A" } ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } } },
 
-    { "id": 4, "type": "stat", "title": "Distinct methods",
+    { "id": 3, "type": "stat", "title": "Mean latency",
+      "description": "Sum / count over the selected methods. Mean is sensitive to outliers — pair with p95/p99.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
-      "targets": [ { "expr": "count(count by (mcp_method_name) (rate(mcp_server_operation_duration_seconds_count{namespace=\"$namespace\"}[5m]) > 0))", "refId": "A" } ] },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "targets": [ { "expr": "sum(rate(mcp_server_operation_duration_seconds_sum{namespace=~\"$namespace\", mcp_method_name=~\"$method\"}[5m])) / sum(rate(mcp_server_operation_duration_seconds_count{namespace=~\"$namespace\", mcp_method_name=~\"$method\"}[5m]))", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "background", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 } ] } } } },
+
+    { "id": 4, "type": "stat", "title": "Distinct methods called",
+      "description": "Cardinality of mcp_method_name with non-zero rate over the last 5m.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "targets": [ { "expr": "count(count by (mcp_method_name) (rate(mcp_server_operation_duration_seconds_count{namespace=~\"$namespace\"}[5m]) > 0))", "refId": "A" } ],
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } } },
+
+    { "type": "row", "id": 200, "title": "Throughput", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 } },
 
     { "id": 10, "type": "timeseries", "title": "Calls/sec by method",
+      "description": "Stacked breakdown of every method's request rate. Hot methods dominate visually; quiet methods still appear as thin slices.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 4 },
-      "targets": [ { "expr": "sum by (mcp_method_name) (rate(mcp_server_operation_duration_seconds_count{namespace=\"$namespace\", mcp_method_name=~\"$method\"}[1m]))", "legendFormat": "{{mcp_method_name}}", "refId": "A" } ],
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "stacking": { "mode": "normal" } } } } },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 7 },
+      "targets": [ { "expr": "sum by (mcp_method_name) (rate(mcp_server_operation_duration_seconds_count{namespace=~\"$namespace\", mcp_method_name=~\"$method\"}[1m]))", "legendFormat": "{{mcp_method_name}}", "refId": "A" } ],
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean","lastNotNull","max"], "sortBy": "Last *", "sortDesc": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2, "custom": { "stacking": { "mode": "normal" }, "fillOpacity": 30, "lineWidth": 1 } } } },
 
-    { "id": 20, "type": "heatmap", "title": "Latency heatmap",
+    { "type": "row", "id": 300, "title": "Latency", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 } },
+
+    { "id": 20, "type": "heatmap", "title": "Latency heatmap (all selected methods)",
+      "description": "Density of operation durations over time. Bright bands at high `le` values are tail-latency events.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 13 },
-      "targets": [ { "expr": "sum by (le) (rate(mcp_server_operation_duration_seconds_bucket{namespace=\"$namespace\", mcp_method_name=~\"$method\"}[1m]))", "format": "heatmap", "refId": "A" } ] },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 17 },
+      "targets": [ { "expr": "sum by (le) (rate(mcp_server_operation_duration_seconds_bucket{namespace=~\"$namespace\", mcp_method_name=~\"$method\"}[1m]))", "format": "heatmap", "refId": "A", "legendFormat": "{{le}}" } ],
+      "options": { "calculate": false, "yAxis": { "unit": "s" }, "color": { "mode": "scheme", "scheme": "Spectral", "reverse": true }, "tooltip": { "show": true, "yHistogram": true } } },
 
     { "id": 21, "type": "timeseries", "title": "p95 by method",
+      "description": "p95 latency per method. Hover lines to compare; the dashed thresholds are the alert levels.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 13 },
-      "targets": [ { "expr": "histogram_quantile(0.95, sum by (le, mcp_method_name) (rate(mcp_server_operation_duration_seconds_bucket{namespace=\"$namespace\", mcp_method_name=~\"$method\"}[5m])))", "legendFormat": "{{mcp_method_name}}", "refId": "A" } ],
-      "fieldConfig": { "defaults": { "unit": "s" } } },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 17 },
+      "targets": [ { "expr": "histogram_quantile(0.95, sum by (le, mcp_method_name) (rate(mcp_server_operation_duration_seconds_bucket{namespace=~\"$namespace\", mcp_method_name=~\"$method\"}[5m])))", "legendFormat": "{{mcp_method_name}}", "refId": "A" } ],
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull","max"], "sortBy": "Max", "sortDesc": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 } ] },
+        "custom": { "thresholdsStyle": { "mode": "dashed" }, "lineWidth": 1.5 } } } },
 
-    { "id": 30, "type": "table", "title": "Per-method latency breakdown",
+    { "type": "row", "id": 400, "title": "Per-method breakdown", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 } },
+
+    { "id": 30, "type": "table", "title": "Per-method latency + RPS",
+      "description": "All methods at once: p50/p95/p99 latency and request rate. Sort any column. Click a method to scope this dashboard to it.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 22 },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 27 },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum by (le, mcp_method_name) (rate(mcp_server_operation_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))", "legendFormat": "p50", "refId": "A", "format": "table", "instant": true },
-        { "expr": "histogram_quantile(0.95, sum by (le, mcp_method_name) (rate(mcp_server_operation_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))", "legendFormat": "p95", "refId": "B", "format": "table", "instant": true },
-        { "expr": "histogram_quantile(0.99, sum by (le, mcp_method_name) (rate(mcp_server_operation_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))", "legendFormat": "p99", "refId": "C", "format": "table", "instant": true },
-        { "expr": "sum by (mcp_method_name) (rate(mcp_server_operation_duration_seconds_count{namespace=\"$namespace\"}[5m]))", "legendFormat": "rps", "refId": "D", "format": "table", "instant": true }
+        { "expr": "histogram_quantile(0.50, sum by (le, mcp_method_name) (rate(mcp_server_operation_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))", "legendFormat": "p50", "refId": "A", "format": "table", "instant": true },
+        { "expr": "histogram_quantile(0.95, sum by (le, mcp_method_name) (rate(mcp_server_operation_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))", "legendFormat": "p95", "refId": "B", "format": "table", "instant": true },
+        { "expr": "histogram_quantile(0.99, sum by (le, mcp_method_name) (rate(mcp_server_operation_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))", "legendFormat": "p99", "refId": "C", "format": "table", "instant": true },
+        { "expr": "sum by (mcp_method_name) (rate(mcp_server_operation_duration_seconds_count{namespace=~\"$namespace\"}[5m]))", "legendFormat": "rps", "refId": "D", "format": "table", "instant": true }
       ],
-      "transformations": [ { "id": "merge" } ] }
+      "transformations": [
+        { "id": "merge" },
+        { "id": "organize", "options": { "excludeByName": { "Time": true } } }
+      ],
+      "fieldConfig": { "defaults": {
+        "custom": { "align": "auto", "displayMode": "color-background-solid" },
+        "links": [{ "title": "Drill into method", "url": "/d/grafana-mcp-tools?var-namespace=${namespace}&var-method=${__data.fields.mcp_method_name}" }]
+      },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "Value #(A|B|C)" }, "properties": [ { "id": "unit", "value": "s" }, { "id": "decimals", "value": 3 } ] },
+          { "matcher": { "id": "byRegexp", "options": "Value #D" },       "properties": [ { "id": "unit", "value": "reqps" }, { "id": "decimals", "value": 2 } ] }
+        ] } }
   ]
 }

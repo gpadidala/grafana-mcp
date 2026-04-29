@@ -33,6 +33,16 @@ services:
       MCP_ADDRESS: ${MCP_ADDRESS:-0.0.0.0:8000}
       MCP_LOG_LEVEL: ${MCP_LOG_LEVEL:-info}
       MCP_METRICS: ${MCP_METRICS:-true}
+      # Corporate-network outbound proxy passthrough. Set HTTP_PROXY /
+      # HTTPS_PROXY in .env when your network requires going through a
+      # forward proxy to reach Grafana. NO_PROXY excludes in-cluster /
+      # localhost destinations from the proxy.
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,grafana,prometheus,loki,tempo,pyroscope,.local}
+      # Corporate-CA bundle path inside the container (mount via
+      # docker-compose.override.yml when needed — see docs/multi-env.md).
+      SSL_CERT_FILE: ${SSL_CERT_FILE:-}
       # Allow the MCP client to scope per-call to a specific Grafana org by
       # passing X-Grafana-Org-Id. Without this allowlist MCP ignores client
       # headers — preventing accidental privilege escalation.
