@@ -1,0 +1,91 @@
+{
+  "title": "grafana-mcp — Runtime / Resources",
+  "uid": "grafana-mcp-runtime",
+  "tags": ["grafana-mcp", "runtime", "resources"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "prometheus" } },
+      { "name": "namespace", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(go_goroutines{job=~\".*grafana-mcp.*\"}, namespace)",
+        "current": { "text": "grafana-mcp", "value": "grafana-mcp" } },
+      { "name": "pod", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(go_goroutines{namespace=\"$namespace\"}, pod)",
+        "multi": true, "includeAll": true,
+        "current": { "text": "All", "value": "$__all" } }
+    ]
+  },
+  "panels": [
+    { "id": 1, "type": "stat", "title": "Goroutines",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [ { "expr": "sum(go_goroutines{namespace=\"$namespace\", pod=~\"$pod\"})", "refId": "A" } ] },
+
+    { "id": 2, "type": "stat", "title": "Threads",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [ { "expr": "sum(go_threads{namespace=\"$namespace\", pod=~\"$pod\"})", "refId": "A" } ] },
+
+    { "id": 3, "type": "stat", "title": "Heap in use",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [ { "expr": "sum(go_memstats_heap_inuse_bytes{namespace=\"$namespace\", pod=~\"$pod\"})", "refId": "A" } ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } } },
+
+    { "id": 4, "type": "stat", "title": "Open FDs",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [ { "expr": "sum(process_open_fds{namespace=\"$namespace\", pod=~\"$pod\"})", "refId": "A" } ] },
+
+    { "id": 10, "type": "timeseries", "title": "Goroutines per pod",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [ { "expr": "go_goroutines{namespace=\"$namespace\", pod=~\"$pod\"}", "legendFormat": "{{pod}}", "refId": "A" } ] },
+
+    { "id": 11, "type": "timeseries", "title": "GC pause p95 (5m)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [ { "expr": "go_gc_duration_seconds{namespace=\"$namespace\", pod=~\"$pod\", quantile=\"0.95\"}", "legendFormat": "{{pod}}", "refId": "A" } ],
+      "fieldConfig": { "defaults": { "unit": "s" } } },
+
+    { "id": 20, "type": "timeseries", "title": "Heap detail (alloc / inuse / sys / next_gc)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "sum(go_memstats_heap_alloc_bytes{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "heap alloc", "refId": "A" },
+        { "expr": "sum(go_memstats_heap_inuse_bytes{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "heap inuse", "refId": "B" },
+        { "expr": "sum(go_memstats_heap_sys_bytes{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "heap sys", "refId": "C" },
+        { "expr": "sum(go_memstats_next_gc_bytes{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "next gc", "refId": "D" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } } },
+
+    { "id": 21, "type": "timeseries", "title": "CPU usage (process_cpu_seconds_total rate)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 12 },
+      "targets": [ { "expr": "rate(process_cpu_seconds_total{namespace=\"$namespace\", pod=~\"$pod\"}[1m])", "legendFormat": "{{pod}}", "refId": "A" } ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } } },
+
+    { "id": 30, "type": "timeseries", "title": "Network bytes (rx / tx)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "targets": [
+        { "expr": "rate(process_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$pod\"}[1m])", "legendFormat": "rx {{pod}}", "refId": "A" },
+        { "expr": "rate(process_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$pod\"}[1m])", "legendFormat": "tx {{pod}}", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" } } },
+
+    { "id": 31, "type": "timeseries", "title": "FDs (open / max)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        { "expr": "process_open_fds{namespace=\"$namespace\", pod=~\"$pod\"}", "legendFormat": "open {{pod}}", "refId": "A" },
+        { "expr": "process_max_fds{namespace=\"$namespace\", pod=~\"$pod\"}", "legendFormat": "max {{pod}}", "refId": "B" }
+      ] }
+  ]
+}

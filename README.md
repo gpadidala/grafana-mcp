@@ -100,6 +100,9 @@ A short subset:
 | `MCP_SESSION_IDLE_TIMEOUT_MINUTES` | `30` | `--session-idle-timeout-minutes` |
 | `MCP_TLS_CERT_FILE` … | — | `--tls-cert-file` … |
 
+See [`docs/metrics.md`](docs/metrics.md) for every emitted metric and
+suggested PromQL.
+
 ## Use cases
 
 See [`docs/usecases.md`](docs/usecases.md) for ten worked scenarios — alert
@@ -156,9 +159,12 @@ pins images by digest.
   `ServiceMonitor`.
 - **Tracing**: set `OTEL_EXPORTER_OTLP_ENDPOINT` and traces flow to Tempo or
   any OTLP collector.
-- **Self-monitoring dashboard**: import [`docs/dashboards/grafana-mcp-self.json`](docs/dashboards/grafana-mcp-self.json)
-  into your Grafana — works against any Prometheus that scrapes the
-  shipped `ServiceMonitor`.
+- **Self-monitoring dashboards**: production-grade set under
+  [`docs/dashboards/`](docs/dashboards/) — import all five into your
+  Grafana to get Overview/SLO, Tools, Sessions, Errors, and Runtime
+  views. Works against any Prometheus that scrapes the shipped
+  `ServiceMonitor`. See [`docs/metrics.md`](docs/metrics.md) for the
+  full metric catalogue.
 - **Alerts**: `k8s/base/prometheusrule.yaml` ships availability, latency,
   error-rate, memory-pressure, and HPA-saturation alerts. Each links to
   the matching section of [`docs/runbook.md`](docs/runbook.md).

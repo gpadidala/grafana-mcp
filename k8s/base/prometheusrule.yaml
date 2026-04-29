@@ -1,6 +1,8 @@
 # Self-monitoring alerts for the MCP server itself. The PrometheusRule CRD
 # ships with kube-prometheus-stack / Prometheus Operator. Drop this file
 # from base/kustomization.yaml if you don't run the operator.
+#
+# Metric names + labels match `grafana/mcp-grafana:0.12.1` — see docs/metrics.md.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -45,7 +47,7 @@ spec:
           expr: |
             histogram_quantile(
               0.95,
-              sum by (le, operation) (
+              sum by (le, mcp_method_name) (
                 rate(mcp_server_operation_duration_seconds_bucket{namespace="grafana-mcp"}[5m])
               )
             ) > 5
@@ -55,14 +57,14 @@ spec:
           annotations:
             summary: p95 MCP operation latency is high
             description: |
-              {{ $labels.operation }} p95 = {{ $value | humanize }}s for 10m.
+              {{ $labels.mcp_method_name }} p95 = {{ $value | humanize }}s for 10m.
               Likely Grafana-side latency — check upstream Grafana SLOs.
 
         - alert: GrafanaMcpHighOperationLatencyP99
           expr: |
             histogram_quantile(
               0.99,
-              sum by (le, operation) (
+              sum by (le, mcp_method_name) (
                 rate(mcp_server_operation_duration_seconds_bucket{namespace="grafana-mcp"}[5m])
               )
             ) > 15
@@ -75,26 +77,44 @@ spec:
     - name: grafana-mcp.errors
       interval: 30s
       rules:
-        - alert: GrafanaMcpHighErrorRate
+        # Note: mcp_server_operation_duration_seconds has no status label, so
+        # we measure error rate at the HTTP boundary.
+        - alert: GrafanaMcpHigh5xxRate
           expr: |
-            sum by (operation) (
-              rate(mcp_server_operation_duration_seconds_count{
+            (
+              sum(rate(http_server_request_duration_seconds_count{
                 namespace="grafana-mcp",
-                status="error"
-              }[5m])
-            )
-            /
-            sum by (operation) (
-              rate(mcp_server_operation_duration_seconds_count{namespace="grafana-mcp"}[5m])
+                http_response_status_code=~"5.."
+              }[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{namespace="grafana-mcp"}[5m]))
             ) > 0.05
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: '>5% error rate on {{ $labels.operation }}'
+            summary: '>5% 5xx rate on grafana-mcp'
             description: |
-              Persistent error rate above 5%. Check Grafana auth, datasource
-              health, and recent service-account token rotations.
+              Persistent server-error rate above 5%. Check Grafana auth,
+              datasource health, and recent service-account token rotations.
+            runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#errors
+
+        - alert: GrafanaMcpUpstreamGrafanaSlow
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(http_client_request_duration_seconds_bucket{namespace="grafana-mcp"}[5m])
+              )
+            ) > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: outbound MCP→Grafana p95 above 5s
+            description: |
+              Either upstream Grafana itself is slow, or network egress is
+              constrained. Check Grafana's own dashboards before chasing MCP.
 
     - name: grafana-mcp.saturation
       interval: 30s
@@ -124,3 +144,14 @@ spec:
           annotations:
             summary: HPA has been at max replicas for 15m
             description: Bump maxReplicas in k8s/base/hpa.yaml or investigate load.
+
+        - alert: GrafanaMcpHighSessionConcurrency
+          expr: sum(mcp_sessions_active{namespace="grafana-mcp"}) > 200
+          for: 5m
+          labels:
+            severity: info
+          annotations:
+            summary: very high concurrent MCP session count
+            description: |
+              {{ $value }} concurrent sessions. Tune
+              MCP_SESSION_IDLE_TIMEOUT_MINUTES or scale out.

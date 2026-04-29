@@ -1,0 +1,71 @@
+{
+  "title": "grafana-mcp — Errors",
+  "uid": "grafana-mcp-errors",
+  "tags": ["grafana-mcp", "errors"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "prometheus" } },
+      { "name": "namespace", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(http_server_request_duration_seconds_count{job=~\".*grafana-mcp.*\"}, namespace)",
+        "current": { "text": "grafana-mcp", "value": "grafana-mcp" } }
+    ]
+  },
+  "panels": [
+    { "id": 1, "type": "stat", "title": "5xx rate %",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [ { "expr": "100 * sum(rate(http_server_request_duration_seconds_count{namespace=\"$namespace\", http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{namespace=\"$namespace\"}[5m]))", "refId": "A" } ],
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 } ] } } } },
+
+    { "id": 2, "type": "stat", "title": "4xx rate %",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [ { "expr": "100 * sum(rate(http_server_request_duration_seconds_count{namespace=\"$namespace\", http_response_status_code=~\"4..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{namespace=\"$namespace\"}[5m]))", "refId": "A" } ],
+      "fieldConfig": { "defaults": { "unit": "percent" } } },
+
+    { "id": 3, "type": "stat", "title": "5xx in range",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [ { "expr": "sum(increase(http_server_request_duration_seconds_count{namespace=\"$namespace\", http_response_status_code=~\"5..\"}[$__range]))", "refId": "A" } ] },
+
+    { "id": 4, "type": "stat", "title": "Restarts (1h)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [ { "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}[1h]))", "refId": "A" } ] },
+
+    { "id": 10, "type": "timeseries", "title": "HTTP responses by status code",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "targets": [ { "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{namespace=\"$namespace\"}[1m]))", "legendFormat": "{{http_response_status_code}}", "refId": "A" } ],
+      "fieldConfig": { "defaults": { "custom": { "stacking": { "mode": "normal" } } } } },
+
+    { "id": 11, "type": "timeseries", "title": "5xx rate over time",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
+      "targets": [ { "expr": "sum(rate(http_server_request_duration_seconds_count{namespace=\"$namespace\", http_response_status_code=~\"5..\"}[1m])) / sum(rate(http_server_request_duration_seconds_count{namespace=\"$namespace\"}[1m]))", "legendFormat": "5xx rate", "refId": "A" } ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } } },
+
+    { "id": 20, "type": "timeseries", "title": "Pod restarts (15m increase)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [ { "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}[15m])", "legendFormat": "{{pod}}", "refId": "A" } ] },
+
+    { "id": 21, "type": "timeseries", "title": "Upstream Grafana p95 (MCP → Grafana)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [ { "expr": "histogram_quantile(0.95, sum by (le) (rate(http_client_request_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))", "legendFormat": "p95 outbound", "refId": "A" } ],
+      "fieldConfig": { "defaults": { "unit": "s" } } },
+
+    { "id": 30, "type": "table", "title": "Top error endpoints",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 21 },
+      "targets": [ { "expr": "topk(10, sum by (http_request_method, http_response_status_code, server_address) (rate(http_server_request_duration_seconds_count{namespace=\"$namespace\", http_response_status_code=~\"[45]..\"}[5m])))", "format": "table", "instant": true, "refId": "A" } ] }
+  ]
+}
