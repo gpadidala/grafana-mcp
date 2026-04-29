@@ -1,0 +1,24 @@
+# Default: let git decide whether files are text or binary.
+* text=auto
+
+# Files that must be LF regardless of the cloning user's core.autocrlf
+# setting. On Windows the default is autocrlf=true, which silently
+# converts LF → CRLF on checkout — that breaks shebangs (sh treats
+# `#!/bin/sh\r` as a literal binary path) and HEREDOCs in shell scripts.
+*.sh         text eol=lf
+*.bash       text eol=lf
+Dockerfile   text eol=lf
+*.dockerfile text eol=lf
+Makefile     text eol=lf
+*.mk         text eol=lf
+
+# Compose / k8s manifests: LF for the same reason — yaml-go is strict.
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Treat dashboard PNGs as binary so git doesn't try to diff them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary

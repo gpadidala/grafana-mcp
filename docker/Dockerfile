@@ -21,7 +21,12 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+# Belt-and-suspenders against Windows checkouts: even with .gitattributes
+# enforcing LF, a contributor with a stale clone could land CRLF here.
+# Strip CRs so the shebang `#!/bin/sh\r` doesn't fail with
+# "no such file or directory" on docker run.
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh \
+ && chmod +x /usr/local/bin/entrypoint.sh
 USER 65532
 
 EXPOSE 8000
