@@ -13,12 +13,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CLEANUP() {
-  docker compose -f compose/docker-compose.yml down --remove-orphans >/dev/null 2>&1 || true
+  docker compose --env-file .env -f compose/docker-compose.yml down --remove-orphans >/dev/null 2>&1 || true
 }
 trap CLEANUP EXIT
 
 echo "→ docker compose up"
-docker compose -f compose/docker-compose.yml up -d --build grafana-mcp
+docker compose --env-file .env -f compose/docker-compose.yml up -d --build grafana-mcp
 
 URL="http://localhost:${MCP_HOST_PORT:-8000}"
 echo "→ waiting for /healthz"
@@ -57,7 +57,7 @@ except Exception:
 echo "  tools listed: $TOOL_COUNT"
 if [ "$TOOL_COUNT" -lt 10 ]; then
   echo "  expected at least 10 tools — check server logs"
-  docker compose -f compose/docker-compose.yml logs grafana-mcp | tail -30
+  docker compose --env-file .env -f compose/docker-compose.yml logs grafana-mcp | tail -30
   exit 1
 fi
 

@@ -12,12 +12,12 @@ replicas:
   - name: grafana-mcp
     count: 3
 
-# Pin the image by digest in prod. Replace `sha256:...` with the digest of
-# the build you actually rolled out (record it in CHANGELOG.md too).
+# Pin by tag (and ideally digest). Replace `digest:` with the sha256 of the
+# image you actually rolled out and record it in CHANGELOG.md.
 images:
   - name: ghcr.io/gpadidala/grafana-mcp
     newTag: "0.12.1"
-    # digest: sha256:REPLACE_ME
+    # digest: sha256:REPLACE_WITH_BUILD_DIGEST
 
 patches:
   # 1. Force write-disabled and prod URL.
@@ -35,7 +35,9 @@ patches:
         path: /data/MCP_LOG_LEVEL
         value: "info"
 
-  # 2. Workload Identity annotation on the SA.
+  # 2. Workload Identity annotation on the SA + pod label so the webhook
+  #    injects the projected token. Replace the client-id placeholder
+  #    before applying.
   - target:
       kind: ServiceAccount
       name: grafana-mcp
@@ -45,16 +47,6 @@ patches:
         value:
           azure.workload.identity/client-id: "REPLACE_WITH_MANAGED_IDENTITY_CLIENT_ID"
 
-  # 3. Replace the plain Secret reference with a CSI volume.
-  #    Uncomment after the SecretProviderClass is provisioned (see
-  #    base/secret.example.yaml).
-  # - target:
-  #     kind: Deployment
-  #     name: grafana-mcp
-  #   path: replica-patch.yaml
-
-  # 4. Bump replicas via the json-patch path so we keep the strategic-merge
-  #    free for SecretProviderClass wiring.
   - target:
       kind: Deployment
       name: grafana-mcp
@@ -62,3 +54,9 @@ patches:
       - op: add
         path: /spec/template/metadata/labels/azure.workload.identity~1use
         value: "true"
+
+# Once the SecretProviderClass is provisioned (see base/secret.example.yaml),
+# uncomment the strategic-merge patch to switch from a plain Secret to a CSI
+# volume sourced from Azure Key Vault.
+# patchesStrategicMerge:
+#   - replica-patch.yaml

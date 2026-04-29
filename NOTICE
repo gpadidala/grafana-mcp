@@ -1,0 +1,27 @@
+grafana-mcp
+Copyright 2026 Gopal Padidala
+
+This product wraps and redistributes the upstream Grafana MCP server:
+
+  Grafana MCP Server (mcp-grafana)
+  https://github.com/grafana/mcp-grafana
+  Copyright 2024-2026 Grafana Labs
+  Licensed under the Apache License, Version 2.0
+
+The container image grafana/mcp-grafana, pulled from Docker Hub at the
+version pinned in docker/Dockerfile, is included verbatim in our wrapper
+image as the executable layer. We do not modify upstream binaries — only
+the entrypoint, healthcheck, and base packages.
+
+Other notable bundled software (run-time only, included via Compose for
+local development; NOT part of the production wrapper image):
+
+  Grafana OSS (grafana/grafana-oss)            — AGPL v3
+  Prometheus (prom/prometheus)                 — Apache-2.0
+  Grafana Loki (grafana/loki)                  — AGPL v3
+  Grafana Tempo (grafana/tempo)                — AGPL v3
+  Grafana Pyroscope (grafana/pyroscope)        — AGPL v3
+  MCP Inspector (@modelcontextprotocol/inspector) — MIT
+
+Each component remains under its own license. This repository does not
+relicense any of them.

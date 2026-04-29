@@ -156,7 +156,12 @@ pins images by digest.
   `ServiceMonitor`.
 - **Tracing**: set `OTEL_EXPORTER_OTLP_ENDPOINT` and traces flow to Tempo or
   any OTLP collector.
-- **Self-monitoring dashboard**: JSON exported under `docs/` (TODO).
+- **Self-monitoring dashboard**: import [`docs/dashboards/grafana-mcp-self.json`](docs/dashboards/grafana-mcp-self.json)
+  into your Grafana — works against any Prometheus that scrapes the
+  shipped `ServiceMonitor`.
+- **Alerts**: `k8s/base/prometheusrule.yaml` ships availability, latency,
+  error-rate, memory-pressure, and HPA-saturation alerts. Each links to
+  the matching section of [`docs/runbook.md`](docs/runbook.md).
 
 ## Security model
 
@@ -168,6 +173,23 @@ pins images by digest.
 - NetworkPolicy: ingress only from `mcp-client=true` pods, egress only to
   the Grafana endpoint.
 - Optional mTLS to Grafana via `MCP_TLS_*`.
+
+## All plugins / all datasource types
+
+If your Grafana has the full set of plugins installed (Prometheus + Loki +
+Tempo + Pyroscope + ClickHouse + Elasticsearch + CloudWatch + Graphite +
+InfluxDB + Sift + OnCall + Incidents …), the wrapper exposes the matching
+MCP tool categories by default. The compose `local-grafana` profile spins
+up Prometheus + Loki + Tempo + Pyroscope **already provisioned** as
+Grafana datasources so the test suite exercises every category end-to-end.
+
+`MCP_ENABLED_TOOLS` in [`.env.example`](.env.example) and
+[`k8s/base/configmap.yaml`](k8s/base/configmap.yaml) defaults to the full
+upstream surface. Narrow it via the presets in
+[`config/tools.env.example`](config/tools.env.example) when you want to
+lock down by category. Read-only safety in prod is enforced by
+`MCP_DISABLE_WRITE=true`, *not* by removing categories — so you don't
+have to choose between "see everything" and "can't edit anything".
 
 ## Troubleshooting
 

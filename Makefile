@@ -16,10 +16,14 @@ ENGINE         ?= docker
 ENV            ?= dev
 PYTEST_ARGS    ?= -ra
 
+ENV_FILE       ?= .env
+# --env-file is required: Compose looks for .env next to the compose file by
+# default, not at the repo root. Passing it explicitly keeps host-port and
+# version overrides honoured no matter where `make` is invoked from.
 ifeq ($(ENGINE),podman)
-  COMPOSE      := podman compose -f $(COMPOSE_FILE)
+  COMPOSE      := podman compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 else
-  COMPOSE      := docker compose -f $(COMPOSE_FILE)
+  COMPOSE      := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 endif
 
 .DEFAULT_GOAL := help

@@ -20,7 +20,8 @@ resources:
   - poddisruptionbudget.yaml
   - hpa.yaml
   - servicemonitor.yaml
+  - prometheusrule.yaml
 
 images:
   - name: ghcr.io/gpadidala/grafana-mcp
-    newTag: dev
+    newTag: latest

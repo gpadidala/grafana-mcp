@@ -1,0 +1,13 @@
+target: all
+
+server:
+  http_listen_port: 4040
+  log_level: warn
+
+pyroscopedb:
+  data_path: /data/pyroscope
+
+storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/pyroscope/blocks

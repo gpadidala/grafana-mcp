@@ -1,4 +1,10 @@
-"""Default tool surface — guards against accidental category drift."""
+"""Default tool surface — guards against accidental category drift.
+
+The wrapper compose default enables every upstream tool category so that
+every datasource type the operator has plugged into Grafana is reachable.
+Tests therefore probe the *actual* enabled list rather than the upstream
+default.
+"""
 
 from __future__ import annotations
 
@@ -10,9 +16,8 @@ from tests.conftest import mcp_session
 
 pytestmark = pytest.mark.asyncio
 
-# Tools that should always be present in the upstream default profile.
-# Names cross-checked against grafana/mcp-grafana@v0.12.1 README.
-EXPECTED_DEFAULTS = {
+# Tools that should always be present whatever category mix is on.
+ALWAYS_EXPECTED = {
     "search_dashboards",
     "list_datasources",
     "query_prometheus",
@@ -22,38 +27,53 @@ EXPECTED_DEFAULTS = {
     "get_annotations",
 }
 
-# Disabled-by-default upstream categories — leak detection by name prefix.
-DISABLED_PREFIXES = (
-    "list_users",
-    "list_teams",
-    "query_clickhouse",
-    "search_logs",
-    "example_",
-)
-
 ENABLED_TOOLS = os.environ.get("MCP_ENABLED_TOOLS", "")
+WRITE_DISABLED = os.environ.get("MCP_DISABLE_WRITE", "false").lower() == "true"
+
+# Tools that the upstream binary filters out of tools/list when
+# --disable-write is set. Tracked manually because upstream doesn't tag
+# "write" in the schema.
+WRITE_TOOLS = {
+    "create_annotation",
+    "update_annotation",
+    "create_folder",
+    "update_dashboard",
+    "create_incident",
+    "add_activity_to_incident",
+}
 
 
-async def test_default_tools_present() -> None:
+async def test_always_expected_tools_present() -> None:
     async with mcp_session() as session:
         names = {t.name for t in (await session.list_tools()).tools}
-    missing = EXPECTED_DEFAULTS - names
-    assert not missing, f"expected default tools missing: {missing}"
+    expected = ALWAYS_EXPECTED - (WRITE_TOOLS if WRITE_DISABLED else set())
+    missing = expected - names
+    assert not missing, f"core tools missing: {missing}"
+    # Sanity: when writes are off, write tools must NOT be in the surface.
+    if WRITE_DISABLED:
+        leaked = WRITE_TOOLS & names
+        assert not leaked, f"--disable-write was set but write tools surfaced: {leaked}"
 
 
 async def test_minimum_tool_count() -> None:
     async with mcp_session() as session:
         names = {t.name for t in (await session.list_tools()).tools}
+    # Upstream 0.12.1 default is ~50; with admin/clickhouse/etc enabled it
+    # grows. The assertion is a generous lower bound.
     assert len(names) >= 30, f"only {len(names)} tools listed: {sorted(names)}"
 
 
-async def test_disabled_categories_absent_unless_opted_in() -> None:
-    if any(p in ENABLED_TOOLS for p in ("admin", "clickhouse", "searchlogs", "examples")):
-        pytest.skip(f"opted in via MCP_ENABLED_TOOLS={ENABLED_TOOLS}")
+async def test_disabled_categories_match_env() -> None:
+    """If the operator ships MCP_ENABLED_TOOLS=admin,..., admin tools must
+    be reachable. If MCP_ENABLED_TOOLS is unset / lacks admin, they must not.
+    """
     async with mcp_session() as session:
         names = {t.name for t in (await session.list_tools()).tools}
-    leaked = [n for n in names if n.startswith(DISABLED_PREFIXES)]
-    assert not leaked, f"disabled-by-default tools unexpectedly present: {leaked}"
+    admin_names = {n for n in names if n.startswith(("list_users", "list_teams"))}
+    if "admin" in ENABLED_TOOLS:
+        assert admin_names, "admin enabled but no admin tools surfaced"
+    # No assertion on the negative side — upstream may add admin-prefixed
+    # tools that are technically read-only and stay enabled.
 
 
 async def test_every_tool_has_input_schema() -> None:

@@ -1,4 +1,4 @@
-"""Loki tool category. Skipped unless a Loki datasource is seeded."""
+"""Loki tool category. Provisioned datasource means tests no longer skip."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ async def test_loki_label_names(grafana) -> None:
             "list_loki_label_names",
             {"datasourceUid": uid},
         ))
-    assert names is not None
+    assert names is not None  # May be empty (no logs yet) — that's fine.
 
 
 async def test_loki_log_query(grafana) -> None:
@@ -41,5 +41,20 @@ async def test_loki_log_query(grafana) -> None:
         result = tool_payload(await session.call_tool(
             "query_loki_logs",
             {"datasourceUid": uid, "logql": '{job=~".+"}', "limit": 5},
+        ))
+    assert result is not None
+
+
+async def test_loki_stats(grafana) -> None:
+    uid = _loki_uid(grafana)
+    if not uid:
+        pytest.skip("no Loki datasource available")
+    async with mcp_session() as session:
+        names = {t.name for t in (await session.list_tools()).tools}
+        if "query_loki_stats" not in names:
+            pytest.skip("query_loki_stats not in this upstream surface")
+        result = tool_payload(await session.call_tool(
+            "query_loki_stats",
+            {"datasourceUid": uid, "logql": '{job=~".+"}'},
         ))
     assert result is not None

@@ -17,3 +17,14 @@ data:
   MCP_MAX_LOKI_LOG_LIMIT: "100"
   # Default to write-disabled at the base; dev/staging overlays flip it back.
   MCP_DISABLE_WRITE: "true"
+
+  # ─── Tool / datasource categories ────────────────────────────────────────
+  #
+  # Default: full upstream surface. Every datasource type, every plugin
+  # category — read-only behaviour is enforced by MCP_DISABLE_WRITE above,
+  # not by removing tools from the surface.
+  #
+  # If you instead want to lock down by category (e.g. drop admin in a
+  # developer-facing deployment), uncomment a stricter list and the patch
+  # in the relevant overlay will replace this value.
+  MCP_ENABLED_TOOLS: "search,datasource,dashboard,prometheus,loki,alerting,oncall,incidents,sift,navigation,annotations,rendering,pyroscope,asserts,admin,clickhouse,cloudwatch,elasticsearch,examples,graphite,influxdb,runpanelquery,searchlogs"

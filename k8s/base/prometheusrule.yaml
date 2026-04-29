@@ -1,0 +1,126 @@
+# Self-monitoring alerts for the MCP server itself. The PrometheusRule CRD
+# ships with kube-prometheus-stack / Prometheus Operator. Drop this file
+# from base/kustomization.yaml if you don't run the operator.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: grafana-mcp
+  namespace: grafana-mcp
+  labels:
+    app.kubernetes.io/name: grafana-mcp
+    # Match the Prometheus operator's `ruleSelector.matchLabels`.
+    release: prometheus
+spec:
+  groups:
+    - name: grafana-mcp.availability
+      interval: 30s
+      rules:
+        - alert: GrafanaMcpDown
+          expr: up{job=~".*grafana-mcp.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: grafana-mcp
+          annotations:
+            summary: grafana-mcp is unreachable
+            runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#mcp-down
+            description: |
+              Pod {{ $labels.pod }} on {{ $labels.namespace }} is failing scrape.
+              Check kubectl logs and recent deploys.
+
+        - alert: GrafanaMcpRestartingRepeatedly
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="grafana-mcp"}[15m]) > 3
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: grafana-mcp pod is restarting in a loop
+            runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#crashloop
+
+    - name: grafana-mcp.latency
+      interval: 30s
+      rules:
+        - alert: GrafanaMcpHighOperationLatencyP95
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le, operation) (
+                rate(mcp_server_operation_duration_seconds_bucket{namespace="grafana-mcp"}[5m])
+              )
+            ) > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: p95 MCP operation latency is high
+            description: |
+              {{ $labels.operation }} p95 = {{ $value | humanize }}s for 10m.
+              Likely Grafana-side latency — check upstream Grafana SLOs.
+
+        - alert: GrafanaMcpHighOperationLatencyP99
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum by (le, operation) (
+                rate(mcp_server_operation_duration_seconds_bucket{namespace="grafana-mcp"}[5m])
+              )
+            ) > 15
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: p99 MCP operation latency is severe
+
+    - name: grafana-mcp.errors
+      interval: 30s
+      rules:
+        - alert: GrafanaMcpHighErrorRate
+          expr: |
+            sum by (operation) (
+              rate(mcp_server_operation_duration_seconds_count{
+                namespace="grafana-mcp",
+                status="error"
+              }[5m])
+            )
+            /
+            sum by (operation) (
+              rate(mcp_server_operation_duration_seconds_count{namespace="grafana-mcp"}[5m])
+            ) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: '>5% error rate on {{ $labels.operation }}'
+            description: |
+              Persistent error rate above 5%. Check Grafana auth, datasource
+              health, and recent service-account token rotations.
+
+    - name: grafana-mcp.saturation
+      interval: 30s
+      rules:
+        - alert: GrafanaMcpMemoryPressure
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="grafana-mcp",container="mcp"}
+              /
+              container_spec_memory_limit_bytes{namespace="grafana-mcp",container="mcp"}
+            ) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: grafana-mcp memory above 85% of limit
+            runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#oom
+
+        - alert: GrafanaMcpHpaMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="grafana-mcp"}
+            >=
+            kube_horizontalpodautoscaler_spec_max_replicas{namespace="grafana-mcp"}
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: HPA has been at max replicas for 15m
+            description: Bump maxReplicas in k8s/base/hpa.yaml or investigate load.

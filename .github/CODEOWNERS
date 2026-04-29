@@ -1,0 +1,7 @@
+# Default reviewer for everything in this repo.
+*       @gpadidala
+
+# Production-impact paths require explicit attention.
+/k8s/overlays/prod/   @gpadidala
+/.github/workflows/   @gpadidala
+/docker/Dockerfile    @gpadidala

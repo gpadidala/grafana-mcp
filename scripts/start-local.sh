@@ -16,8 +16,8 @@ if [[ "${1:-}" == "--full" ]]; then
   PROFILES+=(--profile local-grafana --profile inspector)
 fi
 
-docker compose -f compose/docker-compose.yml "${PROFILES[@]}" up -d
-docker compose -f compose/docker-compose.yml ps
+docker compose --env-file .env -f compose/docker-compose.yml "${PROFILES[@]}" up -d
+docker compose --env-file .env -f compose/docker-compose.yml ps
 echo
 echo "MCP server:    http://localhost:${MCP_HOST_PORT:-8000}/healthz"
 echo "MCP endpoint:  http://localhost:${MCP_HOST_PORT:-8000}/mcp"

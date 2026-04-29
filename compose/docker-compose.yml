@@ -2,19 +2,21 @@
 #
 # Profiles:
 #   (default)        only the MCP server, expects an external Grafana via .env
-#   local-grafana    spins up Grafana OSS so the MCP has something to talk to
+#   local-grafana    full LGTM stack: Grafana + Prometheus + Loki + Tempo + Pyroscope
 #   inspector        attaches the official MCP Inspector UI
 #
 # Run:
-#   docker compose -f compose/docker-compose.yml up -d
-#   docker compose -f compose/docker-compose.yml --profile local-grafana up -d
-#   docker compose -f compose/docker-compose.yml --profile inspector up -d
+#   docker compose --env-file .env -f compose/docker-compose.yml up -d
+#   docker compose --env-file .env -f compose/docker-compose.yml --profile local-grafana up -d
+#   docker compose --env-file .env -f compose/docker-compose.yml --profile inspector up -d
 #
-# Podman 4.4+ supports the same file via `podman compose -f ...`.
+# The --env-file is required: Compose otherwise looks for .env next to the
+# compose file, not at the repo root.
 
 name: grafana-mcp
 
 services:
+  # ─── core ─────────────────────────────────────────────────────────────────
   grafana-mcp:
     image: grafana-mcp:dev
     build:
@@ -26,13 +28,15 @@ services:
     restart: unless-stopped
     env_file: ../.env
     environment:
-      # When using the local-grafana profile, the .env URL is overridden
-      # to point at the in-network service.
       GRAFANA_URL: ${GRAFANA_URL:-http://grafana:3000}
       MCP_TRANSPORT: ${MCP_TRANSPORT:-streamable-http}
       MCP_ADDRESS: ${MCP_ADDRESS:-0.0.0.0:8000}
       MCP_LOG_LEVEL: ${MCP_LOG_LEVEL:-info}
       MCP_METRICS: ${MCP_METRICS:-true}
+      # Default to the full upstream surface so every plugin / datasource
+      # type the operator has wired up is reachable. Override via .env if
+      # you want to lock down by category.
+      MCP_ENABLED_TOOLS: ${MCP_ENABLED_TOOLS:-search,datasource,dashboard,prometheus,loki,alerting,oncall,incidents,sift,navigation,annotations,rendering,pyroscope,asserts,admin,clickhouse,cloudwatch,elasticsearch,examples,graphite,influxdb,runpanelquery,searchlogs}
     ports:
       - "${MCP_HOST_PORT:-8000}:8000"
     healthcheck:
@@ -51,11 +55,7 @@ services:
           memory: 128M
     networks: [mcp]
 
-  # ─── Profile: local-grafana ───────────────────────────────────────────────
-  # Brings up Grafana OSS so a fresh laptop can run the full stack with
-  # `docker compose --profile local-grafana up -d`. Anonymous admin access
-  # is enabled to keep the seed flow simple — DO NOT mirror this in any
-  # cloud deployment.
+  # ─── profile: local-grafana — full LGTM ───────────────────────────────────
   grafana:
     profiles: [local-grafana]
     image: grafana/grafana-oss:11.6.4
@@ -66,7 +66,12 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      GF_FEATURE_TOGGLES_ENABLE: "publicDashboards"
+      GF_FEATURE_TOGGLES_ENABLE: "publicDashboards,traceqlEditor,traceqlSearch"
+      # Install plugins so every datasource type the MCP queries is reachable
+      # in the local stack — matches what your prod Grafana likely has.
+      # Pyroscope and Tempo datasources are core in Grafana 10+; only
+      # third-party plugins need explicit install.
+      GF_INSTALL_PLUGINS: "grafana-clickhouse-datasource"
     ports:
       - "${GRAFANA_HOST_PORT:-3000}:3000"
     healthcheck:
@@ -77,10 +82,61 @@ services:
     networks: [mcp]
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning:ro
 
-  # ─── Profile: inspector ───────────────────────────────────────────────────
-  # The MCP Inspector ships as an npm package; we run it via the official
-  # Node image so the host machine doesn't need a node toolchain.
+  prometheus:
+    profiles: [local-grafana]
+    image: prom/prometheus:v2.55.1
+    container_name: grafana-mcp-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks: [mcp]
+
+  loki:
+    profiles: [local-grafana]
+    image: grafana/loki:3.3.2
+    container_name: grafana-mcp-loki
+    restart: unless-stopped
+    # Loki ships running as user 10001:10001; the bind-mounted volume needs
+    # to be writable by that uid, so we mount a named volume at /loki and
+    # let entrypoint create subdirs.
+    user: "10001:10001"
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    networks: [mcp]
+
+  tempo:
+    profiles: [local-grafana]
+    image: grafana/tempo:2.6.1
+    container_name: grafana-mcp-tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo-config.yaml"]
+    volumes:
+      - ./tempo/tempo-config.yaml:/etc/tempo/tempo-config.yaml:ro
+      - tempo-data:/var/tempo
+    networks: [mcp]
+
+  pyroscope:
+    profiles: [local-grafana]
+    image: grafana/pyroscope:1.10.0
+    container_name: grafana-mcp-pyroscope
+    restart: unless-stopped
+    command: ["-config.file=/etc/pyroscope/pyroscope-config.yaml"]
+    volumes:
+      - ./pyroscope/pyroscope-config.yaml:/etc/pyroscope/pyroscope-config.yaml:ro
+      - pyroscope-data:/data/pyroscope
+    networks: [mcp]
+
+  # ─── profile: inspector ───────────────────────────────────────────────────
   inspector:
     profiles: [inspector]
     image: node:20-alpine
@@ -100,6 +156,10 @@ services:
 
 volumes:
   grafana-data:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  pyroscope-data:
 
 networks:
   mcp:
