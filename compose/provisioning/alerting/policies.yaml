@@ -1,0 +1,28 @@
+# Notification policy tree for the grafana-mcp alert rules.
+#
+# Root receiver is the email contact point provisioned in
+# contactpoints.yaml. We group by alertname + severity so a flap on a
+# single alert doesn't fan out into many emails, but distinct alerts
+# stay separate.
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: grafana-mcp-email
+    group_by:
+      - alertname
+      - severity
+      - mcp_method_name
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      # Critical alerts get a tighter group_wait so they reach the inbox
+      # within ~10s of firing instead of waiting the default 30s.
+      - receiver: grafana-mcp-email
+        matchers:
+          - severity = critical
+        group_wait: 10s
+        group_interval: 2m
+        repeat_interval: 1h
+        continue: false

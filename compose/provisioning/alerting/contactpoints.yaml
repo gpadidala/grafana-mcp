@@ -1,0 +1,37 @@
+# Grafana-managed alerting contact points.
+#
+# Loaded from /etc/grafana/provisioning/alerting/ at startup. The email
+# receiver below uses Grafana's built-in SMTP client; SMTP host/port/from
+# are configured via GF_SMTP_* env vars on the grafana service in
+# docker-compose.yml.
+#
+# In the local-grafana profile, GF_SMTP_HOST points at the mailhog
+# sidecar (mailhog:1025) so this contact point delivers without leaving
+# the docker network. In real environments, point GF_SMTP_HOST at your
+# corporate relay (or smtp.gmail.com:587 with an app password) and
+# Grafana will forward the same email to the address below.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: grafana-mcp-email
+    receivers:
+      - uid: grafana-mcp-email
+        type: email
+        settings:
+          addresses: gopalpadidala@gmail.com
+          singleEmail: false
+          subject: |
+            [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})
+          message: |
+            {{ range .Alerts -}}
+            *Alert:* {{ .Labels.alertname }} — {{ .Labels.severity }}
+            *Summary:* {{ .Annotations.summary }}
+            *Description:* {{ .Annotations.description }}
+            *Runbook:* {{ .Annotations.runbook_url }}
+            *Started:* {{ .StartsAt }}
+            *Labels:*
+            {{ range .Labels.SortedPairs }}  - {{ .Name }} = {{ .Value }}
+            {{ end }}
+            {{ end -}}
+        disableResolveMessage: false
