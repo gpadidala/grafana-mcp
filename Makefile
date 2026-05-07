@@ -90,6 +90,15 @@ test-dashboards:
 	PYTHONPATH=. $$(command -v python3 || command -v python) -m pytest tests/e2e/test_dashboards_playwright.py -s
 	@echo "→ screenshots in reports/dashboards/"
 
+## test-alerts: provisioned-alerts E2E (compose up → check rules + contact point + delivered email via MailHog)
+test-alerts:
+	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) --profile local-grafana up -d --wait
+	GRAFANA_PORT=$$(grep '^GRAFANA_HOST_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 3000); \
+	  MAILHOG_PORT=$$(grep '^MAILHOG_HTTP_HOST_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 18025); \
+	  GRAFANA_URL=http://localhost:$$GRAFANA_PORT MAILHOG_URL=http://localhost:$$MAILHOG_PORT \
+	  PYTHONPATH=. $$(command -v python3 || command -v python) -m pytest tests/e2e/test_alerts_playwright.py -s --junitxml=reports/junit-alerts.xml
+	@echo "→ screenshots in reports/alerts/"
+
 ## test-aks-dryrun: server-side dry-run apply for the chosen overlay
 test-aks-dryrun:
 	kubectl kustomize k8s/overlays/$(ENV) | kubectl apply --dry-run=server -f -
@@ -129,4 +138,4 @@ clean:
 	-docker rmi $(IMAGE) 2>/dev/null || true
 	-rm -rf reports/
 
-.PHONY: help build run run-full stop logs shell inspector smoke test test-functional test-api test-aks-dryrun lint k8s-render k8s-diff k8s-apply-dev k8s-apply-staging k8s-apply-prod clean
+.PHONY: help build run run-full stop logs shell inspector smoke test test-functional test-api test-e2e test-dashboards test-alerts test-aks-dryrun lint k8s-render k8s-diff k8s-apply-dev k8s-apply-staging k8s-apply-prod clean

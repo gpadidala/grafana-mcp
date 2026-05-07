@@ -1,10 +1,17 @@
 # Alerts reference
 
-Every alert shipped in [`k8s/base/prometheusrule.yaml`](../k8s/base/prometheusrule.yaml),
-keyed by name. Each entry lists when the alert fires, common root causes,
-the tuning knob, and the runbook anchor on-call should open first.
+The same nine alerts ship in two flavours — pick whichever your
+deployment can already evaluate:
 
-## Wiring
+| Flavour | Source of truth | Where it runs | Best fit |
+|---|---|---|---|
+| **Prometheus-managed** | [`k8s/base/prometheusrule.yaml`](../k8s/base/prometheusrule.yaml) | Prometheus + Alertmanager (kube-prometheus-stack) | Real K8s clusters with Prometheus Operator |
+| **Grafana-managed** | [`compose/provisioning/alerting/`](../compose/provisioning/alerting/) | Grafana's built-in Unified Alerting | Local compose, single-VM Grafana, or any environment without Alertmanager |
+
+Each entry below lists when the alert fires, common root causes, the
+tuning knob, and the runbook anchor on-call should open first.
+
+## Wiring — Prometheus-managed
 
 ```mermaid
 flowchart LR
@@ -21,6 +28,51 @@ label we ship). Confirm:
 ```bash
 kubectl -n monitoring get prometheus -o yaml | yq '.items[].spec.ruleSelector'
 ```
+
+## Wiring — Grafana-managed
+
+```mermaid
+flowchart LR
+  MCP[grafana-mcp pods] -->|/metrics| P[Prometheus]
+  P -->|datasource| G[Grafana Unified Alerting]
+  G -->|rules.yaml| R[Alert rules]
+  R -->|policies.yaml| CP[Email contact point]
+  CP -->|SMTP| Inbox[ops mailbox]
+```
+
+Three provisioning files are loaded from
+`/etc/grafana/provisioning/alerting/` at Grafana startup:
+
+| File | Purpose |
+|---|---|
+| [`rules.yaml`](../compose/provisioning/alerting/rules.yaml) | Nine alert rules, grouped by `availability`, `latency`, `errors`, `saturation`, all in the `grafana-mcp` folder. |
+| [`contactpoints.yaml`](../compose/provisioning/alerting/contactpoints.yaml) | Single `grafana-mcp-email` receiver. SMTP host/from come from `GF_SMTP_*` env vars. |
+| [`policies.yaml`](../compose/provisioning/alerting/policies.yaml) | Root policy routes everything to the email receiver; a child policy tightens timing for `severity=critical`. |
+
+**SMTP setup.** The compose `local-grafana` profile ships a
+[MailHog](https://github.com/mailhog/MailHog) sidecar that captures
+every outbound message at `http://localhost:18025`. Override
+`GF_SMTP_HOST`, `GF_SMTP_USER`, `GF_SMTP_PASSWORD`, and
+`GF_SMTP_FROM_ADDRESS` in `.env` to point at a real relay
+(`smtp.gmail.com:587` with an [app password], your corporate relay,
+SES, etc.). The recipient address itself is configured in
+`contactpoints.yaml`.
+
+[app password]: https://support.google.com/accounts/answer/185833
+
+**End-to-end test.** [`tests/e2e/test_alerts_playwright.py`](../tests/e2e/test_alerts_playwright.py)
+verifies that:
+1. all nine rules show up via the provisioning API and the alerting UI,
+2. the contact point exists with the configured recipient,
+3. Grafana actually delivers an email (test-receiver endpoint →
+   MailHog).
+
+Run via `make test-alerts`.
+
+**Don't run both flavours at the same time** in production. If
+Prometheus + Grafana both fire the same alert names, duplicate pages
+are noisier than no coverage at all. Pick the flavour that matches the
+stack the on-call team already monitors.
 
 ## Severity ladder
 

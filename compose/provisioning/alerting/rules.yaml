@@ -1,0 +1,424 @@
+# Grafana-managed alert rules for the grafana-mcp server.
+#
+# These mirror the Prometheus-managed alerts in
+# k8s/base/prometheusrule.yaml so teams running Grafana OSS without the
+# Prometheus Operator (e.g. local compose, single-VM deploys) get the
+# same coverage. When both are deployed at the same time, prefer the
+# PrometheusRule and disable this file (rename to rules.yaml.example) —
+# duplicate firing is noisier than no coverage.
+#
+# Alert flow:
+#   PromQL query (refId A, datasource: prometheus)
+#     -> reduce / threshold expression (refId C, datasource: __expr__)
+#     -> condition: C
+#
+# Rules that depend on K8s metrics (kube-state-metrics, cAdvisor) use
+# `noDataState: OK` so the local compose stack — which does not scrape
+# those exporters — doesn't show them as red. In a real cluster they
+# fall back to NoData -> Alerting only when the metrics are present but
+# the predicate is true.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: grafana-mcp.availability
+    folder: grafana-mcp
+    interval: 30s
+    rules:
+      - uid: grafana-mcp-down
+        title: GrafanaMcpDown
+        condition: C
+        for: 5m
+        noDataState: Alerting
+        execErrState: Alerting
+        isPaused: false
+        labels:
+          severity: critical
+          component: grafana-mcp
+        annotations:
+          summary: grafana-mcp is unreachable
+          description: |
+            Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is failing scrape. Check container logs and the most recent deploy.
+          runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#mcp-down
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'up{job=~".*grafana-mcp.*"}'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator: { type: lt, params: [1] }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { type: last, params: [] }
+
+      - uid: grafana-mcp-restarting-repeatedly
+        title: GrafanaMcpRestartingRepeatedly
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        labels:
+          severity: warning
+          component: grafana-mcp
+        annotations:
+          summary: grafana-mcp pod is restarting in a loop
+          description: |
+            Pod {{ $labels.pod }} restarted more than 3 times in the last 15 minutes.
+          runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#crashloop
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'increase(kube_pod_container_status_restarts_total{namespace="grafana-mcp"}[15m])'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator: { type: gt, params: [3] }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { type: last, params: [] }
+
+  - orgId: 1
+    name: grafana-mcp.latency
+    folder: grafana-mcp
+    interval: 30s
+    rules:
+      - uid: grafana-mcp-high-op-latency-p95
+        title: GrafanaMcpHighOperationLatencyP95
+        condition: C
+        for: 10m
+        noDataState: NoData
+        execErrState: Alerting
+        isPaused: false
+        labels:
+          severity: warning
+          component: grafana-mcp
+        annotations:
+          summary: p95 MCP operation latency is high
+          description: |
+            {{ $labels.mcp_method_name }} p95 = {{ $value | humanize }}s for 10m. Likely Grafana-side latency — check upstream Grafana SLOs.
+          runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#latency
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                histogram_quantile(
+                  0.95,
+                  sum by (le, mcp_method_name) (
+                    rate(mcp_server_operation_duration_seconds_bucket{namespace="grafana-mcp"}[5m])
+                  )
+                )
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator: { type: gt, params: [5] }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { type: last, params: [] }
+
+      - uid: grafana-mcp-high-op-latency-p99
+        title: GrafanaMcpHighOperationLatencyP99
+        condition: C
+        for: 10m
+        noDataState: NoData
+        execErrState: Alerting
+        isPaused: false
+        labels:
+          severity: critical
+          component: grafana-mcp
+        annotations:
+          summary: p99 MCP operation latency is severe
+          description: |
+            {{ $labels.mcp_method_name }} p99 = {{ $value | humanize }}s for 10m. MCP clients are visibly hanging — page on-call.
+          runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#latency
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                histogram_quantile(
+                  0.99,
+                  sum by (le, mcp_method_name) (
+                    rate(mcp_server_operation_duration_seconds_bucket{namespace="grafana-mcp"}[5m])
+                  )
+                )
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator: { type: gt, params: [15] }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { type: last, params: [] }
+
+  - orgId: 1
+    name: grafana-mcp.errors
+    folder: grafana-mcp
+    interval: 30s
+    rules:
+      - uid: grafana-mcp-high-5xx-rate
+        title: GrafanaMcpHigh5xxRate
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        labels:
+          severity: warning
+          component: grafana-mcp
+        annotations:
+          summary: '>5% 5xx rate on grafana-mcp'
+          description: |
+            Persistent server-error rate above 5%. Check Grafana auth, datasource health, and recent service-account token rotations.
+          runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#errors
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum(rate(http_server_request_duration_seconds_count{namespace="grafana-mcp",http_response_status_code=~"5.."}[5m]))
+                  /
+                  sum(rate(http_server_request_duration_seconds_count{namespace="grafana-mcp"}[5m]))
+                )
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator: { type: gt, params: [0.05] }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { type: last, params: [] }
+
+      - uid: grafana-mcp-upstream-grafana-slow
+        title: GrafanaMcpUpstreamGrafanaSlow
+        condition: C
+        for: 10m
+        noDataState: NoData
+        execErrState: Alerting
+        isPaused: false
+        labels:
+          severity: warning
+          component: grafana-mcp
+        annotations:
+          summary: outbound MCP -> Grafana p95 above 5s
+          description: |
+            Either upstream Grafana itself is slow, or network egress is constrained. Check Grafana's own dashboards before chasing MCP.
+          runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#errors
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                histogram_quantile(
+                  0.95,
+                  sum by (le) (
+                    rate(http_client_request_duration_seconds_bucket{namespace="grafana-mcp"}[5m])
+                  )
+                )
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator: { type: gt, params: [5] }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { type: last, params: [] }
+
+  - orgId: 1
+    name: grafana-mcp.saturation
+    folder: grafana-mcp
+    interval: 30s
+    rules:
+      - uid: grafana-mcp-memory-pressure
+        title: GrafanaMcpMemoryPressure
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        labels:
+          severity: warning
+          component: grafana-mcp
+        annotations:
+          summary: grafana-mcp memory above 85% of limit
+          description: |
+            Working set exceeded 85% of the container memory limit for 10m. Investigate session count or bump resources.limits.memory.
+          runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#oom
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  container_memory_working_set_bytes{namespace="grafana-mcp",container="mcp"}
+                  /
+                  container_spec_memory_limit_bytes{namespace="grafana-mcp",container="mcp"}
+                )
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator: { type: gt, params: [0.85] }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { type: last, params: [] }
+
+      - uid: grafana-mcp-hpa-maxed-out
+        title: GrafanaMcpHpaMaxedOut
+        condition: C
+        for: 15m
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        labels:
+          severity: warning
+          component: grafana-mcp
+        annotations:
+          summary: HPA has been at max replicas for 15m
+          description: |
+            Bump maxReplicas in k8s/base/hpa.yaml or investigate sustained load.
+          runbook_url: https://github.com/gpadidala/grafana-mcp/blob/main/docs/runbook.md#errors
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  kube_horizontalpodautoscaler_status_current_replicas{namespace="grafana-mcp"}
+                  -
+                  kube_horizontalpodautoscaler_spec_max_replicas{namespace="grafana-mcp"}
+                )
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator: { type: gt, params: [-0.5] }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { type: last, params: [] }
+
+      - uid: grafana-mcp-high-session-concurrency
+        title: GrafanaMcpHighSessionConcurrency
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        labels:
+          severity: info
+          component: grafana-mcp
+        annotations:
+          summary: very high concurrent MCP session count
+          description: |
+            {{ $value }} concurrent sessions. Tune MCP_SESSION_IDLE_TIMEOUT_MINUTES or scale out.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'sum(mcp_sessions_active{namespace="grafana-mcp"})'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator: { type: gt, params: [200] }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { type: last, params: [] }

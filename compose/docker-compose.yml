@@ -81,6 +81,21 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_FEATURE_TOGGLES_ENABLE: "publicDashboards,traceqlEditor,traceqlSearch"
+      # SMTP -> mailhog sidecar so the provisioned email contact point
+      # in compose/provisioning/alerting/contactpoints.yaml delivers
+      # without leaving the docker network. MailHog has no auth and
+      # captures every message; the Playwright alert test reads them
+      # back from http://localhost:18025/api/v2/messages.
+      # Override GF_SMTP_HOST + creds via .env to point at a real relay
+      # (e.g. smtp.gmail.com:587) when running outside compose.
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${GF_SMTP_HOST:-mailhog:1025}
+      GF_SMTP_USER: ${GF_SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${GF_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GF_SMTP_FROM_ADDRESS:-alerts@grafana-mcp.local}
+      GF_SMTP_FROM_NAME: ${GF_SMTP_FROM_NAME:-grafana-mcp alerts}
+      GF_SMTP_SKIP_VERIFY: "true"
+      GF_SMTP_STARTTLS_POLICY: ${GF_SMTP_STARTTLS_POLICY:-OpportunisticStartTLS}
       # Optional plugin install. Empty by default because environments
       # behind a corporate TLS-inspection proxy can't verify
       # https://grafana.com and the container then refuses to start.
@@ -165,6 +180,25 @@ services:
       - /data:size=512m,mode=1777
     volumes:
       - ./pyroscope/pyroscope-config.yaml:/etc/pyroscope/pyroscope-config.yaml:ro
+    networks: [mcp]
+
+  # ─── profile: local-grafana — MailHog SMTP capture ───────────────────────
+  # MailHog is the receiving end of GF_SMTP_HOST. It exposes a fake
+  # SMTP listener on :1025 (no auth) and a small JSON+HTML UI on :8025
+  # so the Playwright alert test can read delivered messages back via
+  # /api/v2/messages without needing a real mailbox provider.
+  mailhog:
+    profiles: [local-grafana]
+    image: mailhog/mailhog:v1.0.1
+    container_name: grafana-mcp-mailhog
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_HTTP_HOST_PORT:-18025}:8025"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/api/v2/messages"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     networks: [mcp]
 
   # ─── profile: inspector ───────────────────────────────────────────────────
